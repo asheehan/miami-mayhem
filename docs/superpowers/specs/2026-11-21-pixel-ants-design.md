@@ -19,7 +19,7 @@ A puzzle game for a 6-year-old, played offline on an iPad. Ants carry a pixel pi
 
 1. **Home:** the pictures shown as level buttons. Completed levels are marked (stored in `localStorage`).
 2. **Play:** top to bottom: the picture, a row of slots, the picker. A home button in a corner.
-3. **Win overlay:** shown when the picture is empty and the last ant is home. A big "YOU WIN!" filling most of the screen, with confetti in the picture's colours and the ants doing a lap. Buttons: next picture, home.
+3. **Win overlay:** shown when the picture is empty and the last ant is home. A big "YOU WIN!" filling most of the screen, with confetti in the picture's colours and the ants doing a lap. Buttons: next picture, home. On the last picture there is no "next picture" button.
 4. **Stuck overlay:** "The ants are stuck!" with a "Try again" button that restarts the level.
 
 ## Level data
@@ -45,22 +45,31 @@ So the block counts of a colour always add up to exactly its pixel count.
 
 ### Picker queue
 
-All blocks go into one queue. Order: each block gets a sort key of the *depth* of its colour (average row of that colour's pixels, bottom = shallow; for a colour's k-th block, shifted deeper so its blocks are spread out) plus random jitter. Shallow first. The first `pickerSize` blocks fill the picker; when a block is dragged out, the next block from the queue takes its place. When the queue is empty, picker spaces stay empty.
+All blocks go into one queue, shallow first. Sort key per block: list the colour's pixels sorted by depth (depth = rows above the bottom row, so the bottom row is 0); the colour's blocks take consecutive shares of that list in order (first block gets the shallowest `count` pixels, and so on); a block's key is the mean depth of its share plus uniform random jitter in [-1.5, 1.5]. Sort ascending.
+
+The first `pickerSize` blocks fill the picker; when a block is dragged out, the next block from the queue takes its place in the same picker space. When the queue is empty, picker spaces stay empty.
+
+### Deal check
+
+Average depth is only a proxy for dig order, so a deal can be unwinnable. At level start the game generates a deal (block sizes + queue) and runs the **bot** on it in a fast simulation with no ants or timing: slotted blocks instantly take reachable pixels of their colour until their count is zero or none is reachable, repeated until nothing changes; then the bot makes one move. If the bot gets stuck, the game reseeds and deals again, up to 50 tries, and uses the last deal if none passes.
+
+**Bot move:** if a slot is empty, place the first block in picker order whose colour has a reachable pixel; if there is none, place the first block in picker order.
 
 ### Slots
 
 - The player drags a block from the picker to an empty slot. Dropping anywhere else returns it to the picker. A slotted block cannot be moved back.
 - A slotted block sends one ant every 0.3 s while: it has unassigned count left, and a reachable, unreserved pixel of its colour exists.
-- The ant reserves its target pixel, walks from the slot up through open cells (shortest path, BFS) to a cell next to the pixel, picks it up (cell becomes open), and walks back to its slot. On arrival the block's shown count drops by one.
+- The ant targets the reachable, unreserved pixel of its colour with the shortest BFS path from the cell below the bottom row nearest its slot; ties go to the lower row, then the leftmost column. It reserves that pixel, walks from the slot up through open cells to a cell next to the pixel, picks it up (cell becomes open), and walks back to its slot. On arrival the block's shown count drops by one.
+- Ants walk at 12 cells per second (a tunable constant) and pass through each other.
 - A block never has more ants out than its remaining count.
 - When a block's count reaches zero it disappears and the slot is free.
 
 ### Win and stuck
 
-- **Win:** the grid is empty.
+- **Win:** the grid is empty and no ant is out.
 - **Stuck:** every slot is full, no ant is out, and no slotted colour has a reachable pixel. The game shows the stuck overlay. "Try again" restarts the level with a fresh shuffle of block sizes and queue.
 
-Levels are not guaranteed solvable by every sequence of choices; the bottom-up queue order makes sensible play succeed.
+Levels are not guaranteed solvable by every sequence of choices; the deal check means the simple bot's strategy wins on nearly every deal.
 
 ## Code layout
 
@@ -78,9 +87,9 @@ Randomness comes from a seeded RNG passed in, so tests are deterministic.
 ## Testing
 
 - Unit tests for `rules.js` and `game.js`: reachability (including pockets only reachable around a corner), block sums, queue order, ant reservation, count decrement, win, stuck detection.
-- A headless playthrough test: a simple bot that always places a block whose colour is reachable must finish each shipped level.
+- A headless playthrough test: for each shipped level and seeds 1–20, the deal check must find a passing deal within 50 tries, and the bot must then finish that deal in the real game loop (`tick` with ants). A failure is a queue or level-authoring bug.
 - Manual check in a browser at iPad portrait size, and installed on the iPad offline.
 
 ## Out of scope
 
-Sound, image import, a solvability checker, scores or stars, landscape layout, undo.
+Sound, image import, a full solvability proof (the deal check only tests one simple strategy), scores or stars, landscape layout, undo.
