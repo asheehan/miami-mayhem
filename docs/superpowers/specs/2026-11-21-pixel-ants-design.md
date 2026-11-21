@@ -17,14 +17,14 @@ A puzzle game for a 6-year-old, played offline on an iPad. Ants carry a pixel pi
 
 ## Screens
 
-1. **Home:** the pictures shown as level buttons. Completed levels are marked (stored in `localStorage`).
+1. **Home:** the pictures shown as level buttons, four per page, with arrow buttons and page dots to change page. Completed levels are marked (stored in `localStorage`).
 2. **Play:** top to bottom: the picture, a row of slots, the picker. A home button in a corner.
 3. **Win overlay:** shown when the picture is empty and the last ant is home. A big "YOU WIN!" filling most of the screen, with confetti in the picture's colours and the ants doing a lap. Buttons: next picture, home. On the last picture there is no "next picture" button.
 4. **Stuck overlay:** "The ants are stuck!" with a "Try again" button that restarts the level.
 
 ## Level data
 
-A level is `{ name, palette: { char: hex }, rows: string[] }`. Every picture is 24 wide by 32 tall (768 pixels), every cell filled, 13–16 colours. Four pictures ship: Rocket, Dino, Reef, Rainbow. Level settings with defaults: `slots: 3`, `pickerSize: 9`.
+A level is `{ name, palette: { char: hex }, rows: string[] }`. Every picture is 24 wide by 32 tall (768 pixels), every cell filled, 13–16 colours. Eight pictures ship, four to a home-screen page. Page 1: Rocket, Dino, Reef, Rainbow. Page 2 (harder): Pirate Ship, Digger, Castle, Robot. Level settings with defaults: `slots: 3`, `pickerSize: 9`.
 
 ## Rules
 
@@ -51,7 +51,7 @@ The first `pickerSize` blocks fill the picker; when a block is dragged out, the 
 
 ### Deal check
 
-Average depth is only a proxy for dig order, so a deal can be unwinnable. At level start the game generates a deal (block sizes + queue) and runs the **bot** on it in a fast simulation with no ants or timing: slotted blocks instantly take reachable pixels of their colour until their count is zero or none is reachable, repeated until nothing changes; then the bot makes one move. If the bot gets stuck, the game reseeds and deals again, up to 50 tries, and uses the last deal if none passes.
+Average depth is only a proxy for dig order, so a deal can be unwinnable. At level start the game generates a deal (block sizes + queue) and runs the **bot** on it in a headless run of the real game loop (same `tick`, same ant timing, fixed 0.05 s steps), making a bot move whenever a slot is free. An ant-free shortcut was tried and did not predict real games well enough. If the bot gets stuck, the game reseeds and deals again, up to 50 tries, and uses the last deal if none passes.
 
 **Bot move:** if a slot is empty, place the first block in picker order whose colour has a reachable pixel; if there is none, place the first block in picker order.
 
@@ -59,7 +59,8 @@ Average depth is only a proxy for dig order, so a deal can be unwinnable. At lev
 
 - The player drags a block from the picker to an empty slot. Dropping anywhere else returns it to the picker. A slotted block cannot be moved back.
 - A slotted block sends one ant every 0.3 s while: it has unassigned count left, and a reachable, unreserved pixel of its colour exists.
-- The ant targets the reachable, unreserved pixel of its colour with the shortest BFS path from the cell below the bottom row nearest its slot; ties go to the lower row, then the leftmost column. It reserves that pixel, walks from the slot up through open cells to a cell next to the pixel, picks it up (cell becomes open), and walks back to its slot. On arrival the block's shown count drops by one.
+- The ant targets a reachable, unreserved pixel of its colour: the lowest row first, then the column nearest its slot, left before right. So ants clear a layer side to side before digging deeper. (The earlier rule, nearest pixel by walking distance, is kept as the `nearest` mode behind the `?nearest` URL flag for comparison.) It reserves that pixel, walks from the slot up through open cells to a cell next to the pixel, picks it up (cell becomes open), and walks back to its slot. On arrival the block's shown count drops by one.
+- A slot that finds nothing to take looks again after 0.1 s.
 - Ants walk at 12 cells per second (a tunable constant) and pass through each other.
 - A block never has more ants out than its remaining count.
 - When a block's count reaches zero it disappears and the slot is free.

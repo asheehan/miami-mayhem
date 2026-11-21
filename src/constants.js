@@ -3,3 +3,5 @@ export const ANT_SPEED = 12; // cells per second
 export const SLOT_Y = 3.5; // slot centre, in cells below the bottom row
 export const MAX_DEAL_TRIES = 50;
 export const JITTER = 1.5; // queue sort key jitter, in rows
+export const RETRY_INTERVAL = 0.1; // seconds before a slot with nothing to take looks again
+export const TARGETING = 'rows'; // 'rows' = clear a layer side to side; 'nearest' = shortest walk

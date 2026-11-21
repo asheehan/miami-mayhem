@@ -1,7 +1,7 @@
 // Screens, animation loop and saved progress.
 import { createGame, placeBlock, tick } from './game.js';
 import { dealLevel } from './deal.js';
-import { computeLayout, draw, homeButtons, overlayButtons } from './render.js';
+import { computeLayout, draw, homeButtons, overlayButtons, PAGE_SIZE } from './render.js';
 import { attachInput } from './input.js';
 import { levels } from './levels/index.js';
 
@@ -9,8 +9,11 @@ const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
 
 // ?fast speeds ants up so a level can be checked quickly.
-const FAST = new URLSearchParams(location.search).has('fast');
-const gameOptions = FAST ? { antSpeed: 60, spawnInterval: 0.05 } : {};
+// ?nearest switches ants back to taking the closest pixel instead of clearing row by row.
+const params = new URLSearchParams(location.search);
+const FAST = params.has('fast');
+const dealOptions = params.has('nearest') ? { targeting: 'nearest' } : {};
+const gameOptions = { ...dealOptions, ...(FAST ? { antSpeed: 60, spawnInterval: 0.05 } : {}) };
 
 const PROGRESS_KEY = 'pixel-ants-progress';
 
@@ -40,6 +43,7 @@ const view = {
   buttons: [],
   time: 0,
   progress: loadProgress(),
+  page: 0,
   levels,
 };
 let layout = null;
@@ -50,7 +54,7 @@ function relayout() {
   const { w, h } = size;
   if (view.screen === 'home') {
     layout = { width: w, height: h };
-    view.buttons = homeButtons(w, h, levels);
+    view.buttons = homeButtons(w, h, levels, view.page);
   } else {
     layout = computeLayout(w, h, levels[levelIndex]);
     view.buttons = view.overlay ? overlayButtons(w, h, view.overlay, levelIndex < levels.length - 1) : [];
@@ -68,6 +72,7 @@ function resize() {
 
 function showHome() {
   view.screen = 'home';
+  view.page = Math.floor(levelIndex / PAGE_SIZE);
   view.state = null;
   view.drag = null;
   view.overlay = null;
@@ -77,7 +82,7 @@ function showHome() {
 function startLevel(i) {
   levelIndex = i;
   const level = levels[i];
-  const deal = dealLevel(level, Date.now() >>> 0 || 1);
+  const deal = dealLevel(level, Date.now() >>> 0 || 1, dealOptions);
   view.state = createGame(level, deal, gameOptions);
   view.screen = 'play';
   view.drag = null;
@@ -135,7 +140,12 @@ attachInput(canvas, {
   onTap(x, y) {
     const b = view.buttons.find((r) => hit(r, x, y));
     if (view.screen === 'home') {
-      if (b) startLevel(b.index);
+      if (!b) return;
+      if (b.id === 'level') startLevel(b.index);
+      else {
+        view.page += b.id === 'next' ? 1 : -1;
+        relayout();
+      }
       return;
     }
     if (view.overlay) {

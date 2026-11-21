@@ -3,7 +3,7 @@ import { levels } from '../src/levels/index.js';
 
 describe('levels', () => {
   it('ships the four pictures in order', () => {
-    expect(levels.map((l) => l.name)).toEqual(['Rocket', 'Dino', 'Reef', 'Rainbow']);
+    expect(levels.map((l) => l.name)).toEqual(['Rocket', 'Dino', 'Reef', 'Rainbow', 'Pirate Ship', 'Digger', 'Castle', 'Robot']);
   });
 
   for (const level of levels) {

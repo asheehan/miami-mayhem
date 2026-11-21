@@ -21,21 +21,22 @@ export function parseLevel(level) {
   return level.rows.map((row) => [...row]);
 }
 
-function isWalkable(grid, w, h, x, y) {
-  if (x < 0 || x >= w) return false;
-  if (y === h) return true;
-  return y >= 0 && y < h && grid[y][x] === null;
-}
+// Scratch buffers reused between calls, so spawning ants does not create garbage.
+let scratch = null;
 
 // BFS over open cells from the ground cell (startX, h).
 // Returns { dist, parent, w, h }; dist/parent are Int32Array of size w * (h + 1), -1 = not reached.
+// The arrays are reused by the next call, so read them before calling again.
 export function openDistances(grid, startX) {
   const h = grid.length;
   const w = h ? grid[0].length : 0;
   const size = w * (h + 1);
-  const dist = new Int32Array(size).fill(-1);
-  const parent = new Int32Array(size).fill(-1);
-  const queue = new Int32Array(size);
+  if (!scratch || scratch.size !== size) {
+    scratch = { size, dist: new Int32Array(size), parent: new Int32Array(size), queue: new Int32Array(size) };
+  }
+  const { dist, parent, queue } = scratch;
+  dist.fill(-1);
+  parent.fill(-1);
   let head = 0;
   let tail = 0;
   const start = h * w + startX;
@@ -47,19 +48,25 @@ export function openDistances(grid, startX) {
     const y = (i - x) / w;
     const d = dist[i] + 1;
     // up, left, right, down
-    const ns = [
-      [x, y - 1],
-      [x - 1, y],
-      [x + 1, y],
-      [x, y + 1],
-    ];
-    for (const [nx, ny] of ns) {
-      if (!isWalkable(grid, w, h, nx, ny)) continue;
-      const j = ny * w + nx;
-      if (dist[j] !== -1) continue;
-      dist[j] = d;
-      parent[j] = i;
-      queue[tail++] = j;
+    if (y > 0 && grid[y - 1][x] === null && dist[i - w] === -1) {
+      dist[i - w] = d;
+      parent[i - w] = i;
+      queue[tail++] = i - w;
+    }
+    if (x > 0 && (y === h || grid[y][x - 1] === null) && dist[i - 1] === -1) {
+      dist[i - 1] = d;
+      parent[i - 1] = i;
+      queue[tail++] = i - 1;
+    }
+    if (x < w - 1 && (y === h || grid[y][x + 1] === null) && dist[i + 1] === -1) {
+      dist[i + 1] = d;
+      parent[i + 1] = i;
+      queue[tail++] = i + 1;
+    }
+    if (y < h && (y + 1 === h || grid[y + 1][x] === null) && dist[i + w] === -1) {
+      dist[i + w] = d;
+      parent[i + w] = i;
+      queue[tail++] = i + w;
     }
   }
   return { dist, parent, w, h };
@@ -172,48 +179,78 @@ export function buildQueue(grid, rng) {
   return keyed.map(({ colour, count }) => ({ colour, count }));
 }
 
-// Nearest reachable, unreserved pixel of `colour` from ground cell (startX, h).
-// Distance is the BFS distance to the pixel's nearest reached open neighbour.
-// Ties: lower row (larger y) first, then leftmost column.
+// Picks the next pixel of `colour` for an ant starting at ground cell (startX, h), among
+// reachable, unreserved pixels.
+//   mode 'rows'    - lowest row first, then the column nearest startX (left before right),
+//                    so ants clear a layer side to side before digging deeper.
+//   mode 'nearest' - shortest walk first; ties go to the lower row, then the leftmost column.
 // Returns { target: {x, y}, path: [{x, y}, ...] } or null; path runs from (startX, h)
 // to the open cell next to the target, inclusive.
-export function findTarget(grid, reserved, colour, startX) {
+export function findTarget(grid, reserved, colour, startX, mode = 'nearest') {
   const { dist, parent, w, h } = openDistances(grid, startX);
-  let best = null;
+  const rows = mode === 'rows';
+  let bx = -1;
+  let by = -1;
+  let bd = -1;
+  let bfrom = -1;
   for (let y = 0; y < h; y++) {
     const row = grid[y];
     for (let x = 0; x < w; x++) {
       if (row[x] !== colour) continue;
       if (reserved && reserved.has(y * w + x)) continue;
-      // neighbour order: below, left, right, above
+      // nearest reached open neighbour; order: below, left, right, above
       let from = -1;
       let d = -1;
-      const consider = (i) => {
+      let i = (y + 1) * w + x;
+      if (dist[i] !== -1) {
+        d = dist[i];
+        from = i;
+      }
+      if (x > 0) {
+        i = y * w + x - 1;
         if (dist[i] !== -1 && (d === -1 || dist[i] < d)) {
           d = dist[i];
           from = i;
         }
-      };
-      consider((y + 1) * w + x);
-      if (x > 0) consider(y * w + x - 1);
-      if (x < w - 1) consider(y * w + x + 1);
-      if (y > 0) consider((y - 1) * w + x);
+      }
+      if (x < w - 1) {
+        i = y * w + x + 1;
+        if (dist[i] !== -1 && (d === -1 || dist[i] < d)) {
+          d = dist[i];
+          from = i;
+        }
+      }
+      if (y > 0) {
+        i = (y - 1) * w + x;
+        if (dist[i] !== -1 && (d === -1 || dist[i] < d)) {
+          d = dist[i];
+          from = i;
+        }
+      }
       if (from === -1) continue;
-      if (
-        best === null ||
-        d < best.d ||
-        (d === best.d && (y > best.y || (y === best.y && x < best.x)))
-      ) {
-        best = { x, y, d, from };
+      let better;
+      if (bfrom === -1) better = true;
+      else if (rows) {
+        const dx = Math.abs(x - startX);
+        const bdx = Math.abs(bx - startX);
+        better = y > by || (y === by && (dx < bdx || (dx === bdx && x < bx)));
+      } else {
+        better = d < bd || (d === bd && (y > by || (y === by && x < bx)));
+      }
+      if (better) {
+        bx = x;
+        by = y;
+        bd = d;
+        bfrom = from;
       }
     }
   }
-  if (best === null) return null;
+  if (bfrom === -1) return null;
   const path = [];
-  for (let i = best.from; i !== -1; i = parent[i]) {
+  for (let i = bfrom; i !== -1; i = parent[i]) {
     const x = i % w;
     path.push({ x, y: (i - x) / w });
   }
   path.reverse();
-  return { target: { x: best.x, y: best.y }, path };
+  return { target: { x: bx, y: by }, path };
 }

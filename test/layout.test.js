@@ -69,3 +69,31 @@ describe('computeLayout column choice', () => {
     expect(ys.size).toBe(1);
   });
 });
+
+describe('homeButtons paging', () => {
+  const eight = Array.from({ length: 8 }, (_, i) => ({ name: `L${i}` }));
+  for (const [w, h] of [[820, 1180], [390, 844]]) {
+    it(`${w}x${h}: four levels per page with page arrows that fit on screen`, async () => {
+      const { homeButtons } = await import('../src/render.js');
+      const p0 = homeButtons(w, h, eight, 0);
+      const p1 = homeButtons(w, h, eight, 1);
+      expect(p0.filter((b) => b.id === 'level').map((b) => b.index)).toEqual([0, 1, 2, 3]);
+      expect(p1.filter((b) => b.id === 'level').map((b) => b.index)).toEqual([4, 5, 6, 7]);
+      expect(p0.filter((b) => b.id !== 'level').map((b) => b.id)).toEqual(['next']);
+      expect(p1.filter((b) => b.id !== 'level').map((b) => b.id)).toEqual(['prev']);
+      for (const b of [...p0, ...p1]) {
+        expect(b.x).toBeGreaterThanOrEqual(0);
+        expect(b.x + b.w).toBeLessThanOrEqual(w);
+        expect(b.y + b.h).toBeLessThanOrEqual(h);
+      }
+      const nav = p0.find((b) => b.id === 'next');
+      expect(nav.w).toBeGreaterThanOrEqual(44);
+      for (const b of p0.filter((x) => x.id === 'level')) expect(b.y + b.h).toBeLessThanOrEqual(nav.y);
+    });
+  }
+
+  it('shows no page arrows when everything fits on one page', async () => {
+    const { homeButtons } = await import('../src/render.js');
+    expect(homeButtons(820, 1180, eight.slice(0, 4), 0).every((b) => b.id === 'level')).toBe(true);
+  });
+});

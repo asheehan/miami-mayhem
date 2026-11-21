@@ -1,5 +1,5 @@
 // Game state and the tick loop. No DOM.
-import { ANT_SPEED, SPAWN_INTERVAL, SLOT_Y } from './constants.js';
+import { ANT_SPEED, SPAWN_INTERVAL, RETRY_INTERVAL, SLOT_Y, TARGETING } from './constants.js';
 import { parseLevel, findTarget, reachableColours } from './rules.js';
 
 // Grid-space x of slot i's centre.
@@ -13,7 +13,7 @@ function slotColumn(state, i) {
   return Math.min(state.w - 1, Math.max(0, Math.round(slotX(state, i))));
 }
 
-// deal = { queue: [{ colour, count }] }; options = { antSpeed, spawnInterval } for testing.
+// deal = { queue: [{ colour, count }] }; options = { antSpeed, spawnInterval, targeting }.
 export function createGame(level, deal, options = {}) {
   const grid = parseLevel(level);
   const h = grid.length;
@@ -37,6 +37,7 @@ export function createGame(level, deal, options = {}) {
     time: 0,
     antSpeed: options.antSpeed ?? ANT_SPEED,
     spawnInterval: options.spawnInterval ?? SPAWN_INTERVAL,
+    targeting: options.targeting ?? TARGETING,
   };
 }
 
@@ -127,8 +128,12 @@ function spawnAnts(state, dt) {
     if (!slot) continue;
     slot.cooldown -= dt;
     if (slot.cooldown > 0 || slot.count - slot.out <= 0) continue;
-    const found = findTarget(state.grid, state.reserved, slot.colour, slotColumn(state, i));
-    if (!found) continue;
+    const found = findTarget(state.grid, state.reserved, slot.colour, slotColumn(state, i), state.targeting);
+    if (!found) {
+      // nothing to take right now; look again shortly rather than every frame
+      slot.cooldown = RETRY_INTERVAL;
+      continue;
+    }
     state.reserved.add(found.target.y * state.w + found.target.x);
     state.ants.push(makeAnt(state, i, slot.colour, found));
     slot.out++;

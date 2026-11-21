@@ -30,8 +30,8 @@ export function botMove(state) {
 // simulation picks different blocks, and on the shipped levels it agreed with the real
 // loop on too few deals. Running the same loop makes the deal check exact for the bot.
 // Cost is roughly 100 ms per deal tried on a laptop.
-export function simulateDeal(level, queue, maxTicks = 200000) {
-  const state = createGame(level, { queue });
+export function simulateDeal(level, queue, options = {}, maxTicks = 200000) {
+  const state = createGame(level, { queue }, options);
   for (let i = 0; i < maxTicks && state.status === 'playing'; i++) {
     let move;
     while ((move = botMove(state))) placeBlock(state, move.pickerIndex, move.slotIndex);
@@ -42,13 +42,14 @@ export function simulateDeal(level, queue, maxTicks = 200000) {
 
 // Tries seeds seed, seed + 1, ... up to MAX_DEAL_TRIES. Returns the first passing deal,
 // or the last one tried with passed = false.
-export function dealLevel(level, seed) {
+// `options` are the createGame options the real game will use (e.g. targeting).
+export function dealLevel(level, seed, options = {}) {
   const grid = parseLevel(level);
   let deal = null;
   for (let t = 0; t < MAX_DEAL_TRIES; t++) {
     const s = seed + t;
     const queue = buildQueue(grid, mulberry32(s));
-    const passed = simulateDeal(level, queue);
+    const passed = simulateDeal(level, queue, options);
     deal = { queue, seed: s, passed };
     if (passed) return deal;
   }

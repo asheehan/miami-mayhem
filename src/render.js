@@ -118,19 +118,41 @@ export function drawBlock(ctx, cx, cy, size, hex, count) {
   ctx.fillText(String(count), cx, cy + size * 0.03);
 }
 
-function drawPicture(ctx, layout, grid, palette) {
-  const { cell } = layout;
-  const tl = layout.toScreen(-0.5, -0.5);
-  ctx.fillStyle = COLOURS.tunnel;
-  ctx.fillRect(tl.x, tl.y, grid[0].length * cell, grid.length * cell);
-  for (let y = 0; y < grid.length; y++) {
-    for (let x = 0; x < grid[y].length; x++) {
-      const c = grid[y][x];
-      if (c === null) continue;
-      ctx.fillStyle = palette[c];
-      ctx.fillRect(tl.x + x * cell, tl.y + y * cell, cell + 0.5, cell + 0.5);
-    }
+// The picture is kept on a small offscreen canvas, one canvas pixel per cell, and only
+// repainted when a pixel has been taken. Each frame then draws it with a single scaled blit.
+let pictureCache = null;
+
+function pictureCanvas(state) {
+  if (!pictureCache || pictureCache.state !== state) {
+    const canvas = document.createElement('canvas');
+    canvas.width = state.w;
+    canvas.height = state.h;
+    pictureCache = { state, remaining: -1, canvas, ctx: canvas.getContext('2d') };
   }
+  if (pictureCache.remaining !== state.remaining) {
+    const { ctx } = pictureCache;
+    const palette = state.level.palette;
+    ctx.fillStyle = COLOURS.tunnel;
+    ctx.fillRect(0, 0, state.w, state.h);
+    for (let y = 0; y < state.h; y++) {
+      const row = state.grid[y];
+      for (let x = 0; x < state.w; x++) {
+        if (row[x] === null) continue;
+        ctx.fillStyle = palette[row[x]];
+        ctx.fillRect(x, y, 1, 1);
+      }
+    }
+    pictureCache.remaining = state.remaining;
+  }
+  return pictureCache.canvas;
+}
+
+function drawPicture(ctx, layout, state) {
+  const tl = layout.toScreen(-0.5, -0.5);
+  const smooth = ctx.imageSmoothingEnabled;
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(pictureCanvas(state), tl.x, tl.y, state.w * layout.cell, state.h * layout.cell);
+  ctx.imageSmoothingEnabled = smooth;
 }
 
 // Remembers each ant's last position to work out which way it faces.
@@ -218,7 +240,7 @@ function drawPlay(ctx, layout, view) {
   ctx.fillStyle = COLOURS.soil;
   ctx.fillRect(0, top, layout.width, bottom - top);
 
-  drawPicture(ctx, layout, state.grid, palette);
+  drawPicture(ctx, layout, state);
 
   // slots
   state.slots.forEach((slot, i) => {
@@ -259,34 +281,46 @@ function drawPlay(ctx, layout, view) {
 
 // ---------- home screen ----------
 
-// Pure. Level thumbnail buttons in a 2-column grid below the title.
-// Each rect covers the picture and its name label.
-export function homeButtons(width, height, levels) {
+export const PAGE_SIZE = 4;
+
+// Pure. One page of level thumbnail buttons (2 x 2) below the title, plus 'prev' / 'next'
+// page buttons along the bottom when there is more than one page.
+// Level rects cover the picture and its name label; `index` is the index into `levels`.
+export function homeButtons(width, height, levels, page = 0) {
+  const pages = Math.ceil(levels.length / PAGE_SIZE);
   const cols = 2;
-  const rows = Math.ceil(levels.length / cols);
+  const rows = 2;
+  const edge = Math.max(16, height * 0.03);
+  const navH = pages > 1 ? Math.max(56, Math.min(84, height * 0.075)) : 0;
   const top = height * 0.2;
-  const bottom = height - Math.max(16, height * 0.03);
+  const bottom = height - edge - (navH ? navH + edge * 0.6 : 0);
   const gap = Math.max(16, width * 0.05);
   const labelH = Math.max(28, height * 0.04);
   // Picture aspect 3:4 plus a label strip.
   const maxW = (width - gap * (cols + 1)) / cols;
   const maxH = (bottom - top - gap * (rows - 1)) / rows;
-  const picW = Math.min(maxW, ((maxH - labelH) * 3) / 4);
-  const w = picW;
-  const h = (picW * 4) / 3 + labelH;
+  const w = Math.min(maxW, ((maxH - labelH) * 3) / 4);
+  const h = (w * 4) / 3 + labelH;
   const totalW = cols * w + (cols - 1) * gap;
   const totalH = rows * h + (rows - 1) * gap;
   const x0 = (width - totalW) / 2;
   const y0 = top + (bottom - top - totalH) / 2;
-  return levels.map((level, i) => ({
+  const buttons = levels.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE).map((level, i) => ({
     id: 'level',
-    index: i,
+    index: page * PAGE_SIZE + i,
     x: x0 + (i % cols) * (w + gap),
     y: y0 + Math.floor(i / cols) * (h + gap),
     w,
     h,
     labelH,
   }));
+  if (pages > 1) {
+    const y = height - edge - navH;
+    const off = Math.max(navH * 1.6, width * 0.22);
+    if (page > 0) buttons.push({ id: 'prev', x: width / 2 - off - navH / 2, y, w: navH, h: navH });
+    if (page < pages - 1) buttons.push({ id: 'next', x: width / 2 + off - navH / 2, y, w: navH, h: navH });
+  }
+  return buttons;
 }
 
 // Draws a level's full picture into a w x h box at (x, y).
@@ -337,6 +371,24 @@ function drawHome(ctx, layout, view) {
   drawAntAt(ctx, ax, height * 0.09 + titlePx * 0.75, 0, titlePx * 0.45, t * 20, null, '#ffd93b');
 
   for (const b of view.buttons) {
+    if (b.id !== 'level') {
+      // round page button with an arrow
+      const cx = b.x + b.w / 2;
+      const cy = b.y + b.h / 2;
+      const dir = b.id === 'next' ? 1 : -1;
+      ctx.fillStyle = COLOURS.button;
+      ctx.beginPath();
+      ctx.arc(cx, cy, b.w / 2, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = COLOURS.buttonText;
+      ctx.beginPath();
+      ctx.moveTo(cx + dir * b.w * 0.2, cy);
+      ctx.lineTo(cx - dir * b.w * 0.12, cy - b.w * 0.2);
+      ctx.lineTo(cx - dir * b.w * 0.12, cy + b.w * 0.2);
+      ctx.closePath();
+      ctx.fill();
+      continue;
+    }
     const level = view.levels[b.index];
     const picH = b.h - b.labelH;
     ctx.fillStyle = 'rgba(255,255,255,0.12)';
@@ -351,6 +403,18 @@ function drawHome(ctx, layout, view) {
     if (view.progress.includes(level.name)) {
       const r = Math.max(18, b.w * 0.14);
       drawTick(ctx, b.x + b.w - r * 0.6, b.y + r * 0.6, r);
+    }
+  }
+  // page dots between the arrows
+  const pages = Math.ceil(view.levels.length / PAGE_SIZE);
+  const nav = view.buttons.find((b) => b.id !== 'level');
+  if (pages > 1 && nav) {
+    const r = nav.h * 0.11;
+    for (let i = 0; i < pages; i++) {
+      ctx.fillStyle = i === view.page ? COLOURS.text : 'rgba(255,255,255,0.3)';
+      ctx.beginPath();
+      ctx.arc(width / 2 + (i - (pages - 1) / 2) * r * 4, nav.y + nav.h / 2, r, 0, Math.PI * 2);
+      ctx.fill();
     }
   }
 }

@@ -226,3 +226,35 @@ describe('findTarget', () => {
     }
   });
 });
+
+describe("findTarget in 'rows' mode", () => {
+  const none = new Set();
+  const order = (rows, colour, startX) => {
+    const grid = rows.map((r) => [...r].map((c) => (c === '.' ? null : c)));
+    const taken = [];
+    for (;;) {
+      const r = findTarget(grid, none, colour, startX, 'rows');
+      if (!r) break;
+      taken.push([r.target.x, r.target.y]);
+      grid[r.target.y][r.target.x] = null;
+    }
+    return taken;
+  };
+
+  it('clears the bottom row outward from the slot, left before right, then the next row', () => {
+    expect(order(['CCCCC', 'CCCCC'], 'C', 2)).toEqual([
+      [2, 1], [1, 1], [3, 1], [0, 1], [4, 1],
+      [2, 0], [1, 0], [3, 0], [0, 0], [4, 0],
+    ]);
+  });
+
+  it('takes a lower pixel far to the side before a higher one straight above', () => {
+    // column 0 is open up to row 0, so C at (1,0) and C at (4,2) are both reachable
+    const taken = order(['.CAAA', '.AAAA', '.AAAC'], 'C', 0);
+    expect(taken[0]).toEqual([4, 2]);
+  });
+
+  it('only picks pixels an ant can walk to', () => {
+    expect(findTarget([['C'], ['A']], none, 'C', 0, 'rows')).toBeNull();
+  });
+});
