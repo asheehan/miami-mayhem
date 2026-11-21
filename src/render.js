@@ -9,7 +9,7 @@ const COLUMN_CHOICES = [3, 5, 9];
 export const COLOURS = {
   bg: '#17152a',
   soil: '#2a2140',
-  tunnel: '#100d1c',
+  tunnel: '#6b5a80',
   slot: '#4a4170',
   ant: '#1a1014',
   text: '#ffffff',
@@ -148,7 +148,7 @@ function drawAnt(ctx, layout, ant, time, carry) {
   }
   headings.set(ant, { x: ant.pos.x, y: ant.pos.y, angle });
 
-  const s = cell * 0.9;
+  const s = cell * 1.0;
   ctx.save();
   ctx.translate(p.x, p.y);
   ctx.rotate(angle);
