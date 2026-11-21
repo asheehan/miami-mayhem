@@ -326,6 +326,7 @@ export function homeButtons(width, height, levels, page = 0) {
     labelH,
   }));
   const gear = Math.max(44, Math.min(64, width * 0.11));
+  buttons.push({ id: 'exit', x: 12, y: 12, w: gear, h: gear });
   buttons.push({ id: 'settings', x: width - gear - 12, y: 12, w: gear, h: gear });
   if (pages > 1) {
     const y = height - edge - navH;
@@ -346,6 +347,19 @@ function drawThumbnail(ctx, level, x, y, w, h) {
       ctx.fillStyle = level.palette[rows[gy][gx]];
       ctx.fillRect(x + gx * cw, y + gy * ch, cw + 0.5, ch + 0.5);
     }
+  }
+}
+
+// Launcher tile art: a picture with a line of ants carrying pixels along the bottom.
+export function drawGameTile(ctx, level, x, y, w, h, time) {
+  drawThumbnail(ctx, level, x, y, w, h);
+  const colours = Object.values(level.palette);
+  const s = w * 0.16;
+  const n = 4;
+  for (let i = 0; i < n; i++) {
+    const ax = x + ((time * w * 0.12 + (i * w) / n) % (w + s)) - s / 2;
+    if (ax < x + s * 0.6 || ax > x + w - s * 0.6) continue;
+    drawAntAt(ctx, ax, y + h - s * 0.7, 0, s, time * 18 + i * 2, colours[(i * 3 + 2) % colours.length]);
   }
 }
 
@@ -392,6 +406,10 @@ function drawHome(ctx, layout, view) {
   for (const b of view.buttons) {
     if (b.id === 'settings') {
       drawGear(ctx, b);
+      continue;
+    }
+    if (b.id === 'exit') {
+      drawHomeButton(ctx, b);
       continue;
     }
     if (b.id !== 'level') {

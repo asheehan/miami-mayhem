@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { botMove, simulateDeal, dealLevel } from '../src/deal.js';
-import { createGame, placeBlock } from '../src/game.js';
-import { levels } from '../src/levels/index.js';
+import { botMove, simulateDeal, dealLevel } from '../src/games/pixel-ants/deal.js';
+import { createGame, placeBlock } from '../src/games/pixel-ants/game.js';
+import { levels } from '../src/games/pixel-ants/levels/index.js';
 
 const tiny = { name: 'Tiny', palette: {}, rows: ['AB', 'CC'], slots: 2, pickerSize: 2 };
 const B = (colour, count) => ({ colour, count });

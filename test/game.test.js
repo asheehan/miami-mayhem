@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { createGame, placeBlock, tick, isStuck, slotX } from '../src/game.js';
-import { SLOT_Y } from '../src/constants.js';
+import { createGame, placeBlock, tick, isStuck, slotX } from '../src/games/pixel-ants/game.js';
+import { SLOT_Y } from '../src/games/pixel-ants/constants.js';
 
 const tiny = { name: 'Tiny', palette: {}, rows: ['AB', 'CC'], slots: 2, pickerSize: 2 };
 const B = (colour, count) => ({ colour, count });

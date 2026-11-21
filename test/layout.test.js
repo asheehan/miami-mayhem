@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { computeLayout } from '../src/render.js';
-import { levels } from '../src/levels/index.js';
-import { SLOT_Y } from '../src/constants.js';
+import { computeLayout } from '../src/games/pixel-ants/render.js';
+import { levels } from '../src/games/pixel-ants/levels/index.js';
+import { SLOT_Y } from '../src/games/pixel-ants/constants.js';
 
 const level = levels[0];
 const W = 24;
@@ -74,13 +74,13 @@ describe('homeButtons paging', () => {
   const eight = Array.from({ length: 8 }, (_, i) => ({ name: `L${i}` }));
   for (const [w, h] of [[820, 1180], [390, 844]]) {
     it(`${w}x${h}: four levels per page with page arrows that fit on screen`, async () => {
-      const { homeButtons } = await import('../src/render.js');
+      const { homeButtons } = await import('../src/games/pixel-ants/render.js');
       const p0 = homeButtons(w, h, eight, 0);
       const p1 = homeButtons(w, h, eight, 1);
       expect(p0.filter((b) => b.id === 'level').map((b) => b.index)).toEqual([0, 1, 2, 3]);
       expect(p1.filter((b) => b.id === 'level').map((b) => b.index)).toEqual([4, 5, 6, 7]);
-      expect(p0.filter((b) => b.id !== 'level').map((b) => b.id)).toEqual(['settings', 'next']);
-      expect(p1.filter((b) => b.id !== 'level').map((b) => b.id)).toEqual(['settings', 'prev']);
+      expect(p0.filter((b) => b.id !== 'level').map((b) => b.id)).toEqual(['exit', 'settings', 'next']);
+      expect(p1.filter((b) => b.id !== 'level').map((b) => b.id)).toEqual(['exit', 'settings', 'prev']);
       for (const b of [...p0, ...p1]) {
         expect(b.x).toBeGreaterThanOrEqual(0);
         expect(b.x + b.w).toBeLessThanOrEqual(w);
@@ -93,14 +93,14 @@ describe('homeButtons paging', () => {
   }
 
   it('shows no page arrows when everything fits on one page', async () => {
-    const { homeButtons } = await import('../src/render.js');
-    expect(homeButtons(820, 1180, eight.slice(0, 4), 0).map((b) => b.id)).toEqual(['level', 'level', 'level', 'level', 'settings']);
+    const { homeButtons } = await import('../src/games/pixel-ants/render.js');
+    expect(homeButtons(820, 1180, eight.slice(0, 4), 0).map((b) => b.id)).toEqual(['level', 'level', 'level', 'level', 'exit', 'settings']);
   });
 });
 
 describe('hard difficulty (double resolution)', () => {
   it('doubles every pixel into a 2 x 2 square', async () => {
-    const { doubled } = await import('../src/levels/index.js');
+    const { doubled } = await import('../src/games/pixel-ants/levels/index.js');
     const d = doubled({ name: 'T', palette: {}, rows: ['AB', 'CD'] }, { blockMax: 80 });
     expect(d.rows).toEqual(['AABB', 'AABB', 'CCDD', 'CCDD']);
     expect(d.scale).toBe(2);
@@ -109,7 +109,7 @@ describe('hard difficulty (double resolution)', () => {
 
   for (const [w, h] of [[820, 1180], [390, 844]]) {
     it(`${w}x${h}: slots, picker and picture sit in the same place as on easy`, async () => {
-      const { doubled } = await import('../src/levels/index.js');
+      const { doubled } = await import('../src/games/pixel-ants/levels/index.js');
       const easy = computeLayout(w, h, level);
       const hard = computeLayout(w, h, doubled(level));
       expect(hard.cell).toBeCloseTo(easy.cell / 2);

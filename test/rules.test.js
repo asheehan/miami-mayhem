@@ -7,8 +7,8 @@ import {
   splitBlocks,
   buildQueue,
   findTarget,
-} from '../src/rules.js';
-import { levels } from '../src/levels/index.js';
+} from '../src/games/pixel-ants/rules.js';
+import { levels } from '../src/games/pixel-ants/levels/index.js';
 
 // Builds a grid from row strings; '.' means open.
 function g(rows) {

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { levels } from '../src/levels/index.js';
+import { levels } from '../src/games/pixel-ants/levels/index.js';
 
 describe('levels', () => {
   it('ships the four pictures in order', () => {

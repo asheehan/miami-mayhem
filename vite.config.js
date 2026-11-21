@@ -8,12 +8,12 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: ['apple-touch-icon.png'],
       manifest: {
-        name: 'Pixel Ants',
-        short_name: 'Pixel Ants',
+        name: "Riley's Miami Mayhem",
+        short_name: 'Miami Mayhem',
         display: 'fullscreen',
         orientation: 'portrait',
-        background_color: '#17152a',
-        theme_color: '#17152a',
+        background_color: '#2b1055',
+        theme_color: '#2b1055',
         start_url: '.',
         scope: '.',
         icons: [

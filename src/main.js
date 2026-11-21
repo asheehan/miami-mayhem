@@ -1,95 +1,15 @@
-// Screens, animation loop and saved progress.
-import { createGame, placeBlock, tick } from './game.js';
-import { dealLevel } from './deal.js';
-import { computeLayout, draw, homeButtons, overlayButtons, settingsButtons, PAGE_SIZE } from './render.js';
+// The shell: owns the canvas, the animation loop and pointer input, shows the launcher,
+// and hands everything to whichever game is open.
 import { attachInput } from './input.js';
-import { levels, doubled } from './levels/index.js';
-import { HARD } from './constants.js';
+import { games } from './games/index.js';
+import { drawLauncher, launcherButtons } from './launcher.js';
 
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
 
-// ?fast speeds ants up so a level can be checked quickly.
-// ?nearest switches ants back to taking the closest pixel instead of clearing row by row.
-const params = new URLSearchParams(location.search);
-const FAST = params.has('fast');
-const dealOptions = params.has('nearest') ? { targeting: 'nearest' } : {};
-const gameOptions = { ...dealOptions, ...(FAST ? { antSpeed: 60, spawnInterval: 0.05 } : {}) };
-
-const PROGRESS_KEY = 'pixel-ants-progress';
-
-function loadProgress() {
-  try {
-    const v = JSON.parse(localStorage.getItem(PROGRESS_KEY) || '[]');
-    return Array.isArray(v) ? v.filter((x) => typeof x === 'string') : [];
-  } catch {
-    return [];
-  }
-}
-
-function saveProgress(names) {
-  try {
-    localStorage.setItem(PROGRESS_KEY, JSON.stringify(names));
-  } catch {
-    // storage can be unavailable (private mode); progress just isn't kept
-  }
-}
-
-const SETTINGS_KEY = 'pixel-ants-settings';
-
-function loadDifficulty() {
-  try {
-    return JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}').difficulty === 'hard' ? 'hard' : 'easy';
-  } catch {
-    return 'easy';
-  }
-}
-
-function saveDifficulty(difficulty) {
-  try {
-    localStorage.setItem(SETTINGS_KEY, JSON.stringify({ difficulty }));
-  } catch {
-    // not kept if storage is unavailable
-  }
-}
-
-// Completed pictures are remembered separately for each difficulty.
-const suffixFor = (difficulty) => (difficulty === 'hard' ? ' (hard)' : '');
-
-const view = {
-  screen: 'home',
-  state: null,
-  drag: null,
-  overlay: null,
-  overlayTime: 0,
-  buttons: [],
-  time: 0,
-  progress: loadProgress(),
-  page: 0,
-  difficulty: loadDifficulty(),
-  suffix: '',
-  loading: false,
-  levels,
-};
-view.suffix = suffixFor(view.difficulty);
-let playLevel = levels[0]; // the level being played, at the chosen difficulty
-let layout = null;
-let levelIndex = 0;
 let size = { w: 0, h: 0 };
-
-function relayout() {
-  const { w, h } = size;
-  if (view.screen === 'home') {
-    layout = { width: w, height: h };
-    view.buttons = homeButtons(w, h, levels, view.page);
-  } else if (view.screen === 'settings') {
-    layout = { width: w, height: h };
-    view.buttons = settingsButtons(w, h);
-  } else {
-    layout = computeLayout(w, h, playLevel);
-    view.buttons = view.overlay ? overlayButtons(w, h, view.overlay, levelIndex < levels.length - 1) : [];
-  }
-}
+let active = null; // the open game, or null while the launcher is showing
+const launcher = { games, buttons: [], time: 0 };
 
 function resize() {
   const dpr = window.devicePixelRatio || 1;
@@ -97,116 +17,30 @@ function resize() {
   canvas.width = Math.round(size.w * dpr);
   canvas.height = Math.round(size.h * dpr);
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  relayout();
+  launcher.buttons = launcherButtons(size.w, size.h, games);
+  if (active) active.resize(size.w, size.h);
 }
 
-function showHome() {
-  view.screen = 'home';
-  view.page = Math.floor(levelIndex / PAGE_SIZE);
-  view.state = null;
-  view.drag = null;
-  view.overlay = null;
-  relayout();
+function open(game) {
+  active = game.create({
+    exit() {
+      active = null;
+    },
+  });
+  active.resize(size.w, size.h);
 }
-
-// Dealing a level can take a moment (it test-plays shuffles until one is winnable), so
-// show a message first and deal on the next turn of the event loop.
-function startLevel(i) {
-  if (view.loading) return;
-  view.loading = true;
-  view.drag = null;
-  setTimeout(() => {
-    levelIndex = i;
-    playLevel = view.difficulty === 'hard' ? doubled(levels[i], HARD) : levels[i];
-    const deal = dealLevel(playLevel, Date.now() >>> 0 || 1, dealOptions);
-    view.state = createGame(playLevel, deal, gameOptions);
-    view.screen = 'play';
-    view.overlay = null;
-    view.loading = false;
-    relayout();
-  }, 40);
-}
-
-function showOverlay(kind) {
-  view.overlay = kind;
-  view.overlayTime = view.time;
-  view.drag = null;
-  if (kind === 'won') {
-    const name = levels[levelIndex].name + view.suffix;
-    if (!view.progress.includes(name)) {
-      view.progress = [...view.progress, name];
-      saveProgress(view.progress);
-    }
-  }
-  relayout();
-}
-
-const hit = (r, x, y, pad = 0) =>
-  x >= r.x - pad && x <= r.x + r.w + pad && y >= r.y - pad && y <= r.y + r.h + pad;
 
 attachInput(canvas, {
-  onPickUp(x, y) {
-    const state = view.state;
-    if (view.loading || view.screen !== 'play' || view.overlay || !state || state.status !== 'playing') return false;
-    const i = layout.pickerRects.findIndex((r) => hit(r, x, y));
-    if (i === -1 || !state.picker[i]) return false;
-    view.drag = { pickerIndex: i, x, y };
-    return true;
-  },
-  onDrag(x, y) {
-    if (view.drag) Object.assign(view.drag, { x, y });
-  },
-  onDrop(x, y) {
-    const drag = view.drag;
-    view.drag = null;
-    if (!drag || !view.state) return;
-    const state = view.state;
-    // Nearest empty slot whose rect, grown by half a block, contains the drop point.
-    let best = -1;
-    let bestD = Infinity;
-    layout.slotRects.forEach((r, i) => {
-      if (state.slots[i] || !hit(r, x, y, r.w / 2)) return;
-      const d = Math.hypot(x - (r.x + r.w / 2), y - (r.y + r.h / 2));
-      if (d < bestD) {
-        bestD = d;
-        best = i;
-      }
-    });
-    if (best !== -1) placeBlock(state, drag.pickerIndex, best);
-  },
+  onPickUp: (x, y) => (active ? active.onPickUp(x, y) : false),
+  onDrag: (x, y) => active?.onDrag(x, y),
+  onDrop: (x, y) => active?.onDrop(x, y),
   onTap(x, y) {
-    if (view.loading) return;
-    const b = view.buttons.find((r) => hit(r, x, y));
-    if (view.screen === 'settings') {
-      if (!b) return;
-      if (b.id === 'back') showHome();
-      else {
-        view.difficulty = b.id;
-        view.suffix = suffixFor(b.id);
-        saveDifficulty(b.id);
-      }
+    if (active) {
+      active.onTap(x, y);
       return;
     }
-    if (view.screen === 'home') {
-      if (!b) return;
-      if (b.id === 'level') startLevel(b.index);
-      else if (b.id === 'settings') {
-        view.screen = 'settings';
-        relayout();
-      } else {
-        view.page += b.id === 'next' ? 1 : -1;
-        relayout();
-      }
-      return;
-    }
-    if (view.overlay) {
-      if (!b) return;
-      if (b.id === 'next') startLevel(levelIndex + 1);
-      else if (b.id === 'home') showHome();
-      else if (b.id === 'retry') startLevel(levelIndex);
-      return;
-    }
-    if (hit(layout.homeBtn, x, y)) showHome();
+    const b = launcher.buttons.find((r) => x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h);
+    if (b && b.id === 'game') open(games[b.index]);
   },
 });
 
@@ -216,18 +50,18 @@ let last = performance.now();
 function frame(now) {
   const dt = Math.min((now - last) / 1000, 0.05);
   last = now;
-  view.time += dt;
-  const state = view.state;
-  if (view.screen === 'play' && state) {
-    tick(state, dt);
-    if (!view.overlay && state.status !== 'playing') showOverlay(state.status);
+  if (active) {
+    active.update(dt);
+    active.draw(ctx);
+  } else {
+    launcher.time += dt;
+    drawLauncher(ctx, size.w, size.h, launcher);
   }
-  draw(ctx, layout, view);
   requestAnimationFrame(frame);
 }
 
 resize();
+// ?game=<id> opens a game directly, for testing.
+const direct = games.find((g) => g.id === new URLSearchParams(location.search).get('game'));
+if (direct) open(direct);
 requestAnimationFrame(frame);
-
-// Test hook for automated browser checks; harmless in normal play.
-if (FAST) window.__pixelAnts = { view, levels };

@@ -2,6 +2,12 @@
 
 A puzzle game for a 6-year-old, played offline on an iPad. Ants carry a pixel picture away one pixel at a time. The player chooses which colours the ants collect.
 
+## Launcher
+
+The app is "Riley's Miami Mayhem": a launcher with a Miami sunset backdrop and one tile per game. Pixel Ants is the first game; an odd number of games leaves a "More games soon!" tile. Tapping a tile opens the game; the house button on a game's own home screen returns to the launcher.
+
+The shell (`src/main.js`) owns the canvas, animation loop and pointer input. Each game lives in `src/games/<id>/` and exports `{ id, title, drawTile, create(host) }`; `create` returns `{ resize, update, draw, onPickUp, onDrag, onDrop, onTap }` and `host.exit()` goes back to the launcher. Games are listed in `src/games/index.js`. The rest of this document describes Pixel Ants, whose files are under `src/games/pixel-ants/`.
+
 ## Goal and constraints
 
 - Buildable in about 10 hours.

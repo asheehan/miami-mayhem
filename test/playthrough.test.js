@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest';
-import { botMove, dealLevel } from '../src/deal.js';
-import { createGame, placeBlock, tick } from '../src/game.js';
-import { levels, doubled } from '../src/levels/index.js';
-import { HARD } from '../src/constants.js';
+import { botMove, dealLevel } from '../src/games/pixel-ants/deal.js';
+import { createGame, placeBlock, tick } from '../src/games/pixel-ants/game.js';
+import { levels, doubled } from '../src/games/pixel-ants/levels/index.js';
+import { HARD } from '../src/games/pixel-ants/constants.js';
 
 describe('bot playthrough', { timeout: 120_000 }, () => {
   // Robot is deliberately very hard for the simple bot, so it is left out.
