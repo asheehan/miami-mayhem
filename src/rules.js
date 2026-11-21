@@ -171,3 +171,49 @@ export function buildQueue(grid, rng) {
   keyed.sort((a, b) => a.key - b.key);
   return keyed.map(({ colour, count }) => ({ colour, count }));
 }
+
+// Nearest reachable, unreserved pixel of `colour` from ground cell (startX, h).
+// Distance is the BFS distance to the pixel's nearest reached open neighbour.
+// Ties: lower row (larger y) first, then leftmost column.
+// Returns { target: {x, y}, path: [{x, y}, ...] } or null; path runs from (startX, h)
+// to the open cell next to the target, inclusive.
+export function findTarget(grid, reserved, colour, startX) {
+  const { dist, parent, w, h } = openDistances(grid, startX);
+  let best = null;
+  for (let y = 0; y < h; y++) {
+    const row = grid[y];
+    for (let x = 0; x < w; x++) {
+      if (row[x] !== colour) continue;
+      if (reserved && reserved.has(y * w + x)) continue;
+      // neighbour order: below, left, right, above
+      let from = -1;
+      let d = -1;
+      const consider = (i) => {
+        if (dist[i] !== -1 && (d === -1 || dist[i] < d)) {
+          d = dist[i];
+          from = i;
+        }
+      };
+      consider((y + 1) * w + x);
+      if (x > 0) consider(y * w + x - 1);
+      if (x < w - 1) consider(y * w + x + 1);
+      if (y > 0) consider((y - 1) * w + x);
+      if (from === -1) continue;
+      if (
+        best === null ||
+        d < best.d ||
+        (d === best.d && (y > best.y || (y === best.y && x < best.x)))
+      ) {
+        best = { x, y, d, from };
+      }
+    }
+  }
+  if (best === null) return null;
+  const path = [];
+  for (let i = best.from; i !== -1; i = parent[i]) {
+    const x = i % w;
+    path.push({ x, y: (i - x) / w });
+  }
+  path.reverse();
+  return { target: { x: best.x, y: best.y }, path };
+}

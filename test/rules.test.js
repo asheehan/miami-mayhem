@@ -6,6 +6,7 @@ import {
   reachableColours,
   splitBlocks,
   buildQueue,
+  findTarget,
 } from '../src/rules.js';
 import { levels } from '../src/levels/index.js';
 
@@ -156,6 +157,72 @@ describe('buildQueue', () => {
         return idx.reduce((a, b) => a + b, 0) / idx.length;
       };
       expect(mean('B')).toBeLessThan(mean('A'));
+    }
+  });
+});
+
+describe('findTarget', () => {
+  const pt = (x, y) => ({ x, y });
+  const none = new Set();
+
+  it('targets a bottom pixel from the ground', () => {
+    expect(findTarget(g(['AB', 'CC']), none, 'C', 0)).toEqual({ target: pt(0, 1), path: [pt(0, 2)] });
+  });
+
+  it('returns null for an unreachable colour', () => {
+    expect(findTarget(g(['AB', 'CC']), none, 'A', 0)).toBeNull();
+  });
+
+  it('prefers the shorter path', () => {
+    expect(findTarget(g(['CC']), none, 'C', 0).target).toEqual(pt(0, 0));
+    expect(findTarget(g(['CC']), none, 'C', 1).target).toEqual(pt(1, 0));
+  });
+
+  it('breaks a distance and row tie by leftmost column', () => {
+    // (0,1), (2,1) and (1,0) all have an open neighbour at distance 2.
+    // (1,0) loses on row; (0,1) beats (2,1) on column.
+    const r = findTarget(g(['.C.', 'C.C', '...']), none, 'C', 1);
+    expect(r.target).toEqual(pt(0, 1));
+  });
+
+  it('breaks a distance tie by lower row before column', () => {
+    // C at (0,0) is reached from (0,1) at distance 1; C at (1,1) from ground (1,2) at distance 1.
+    const grid = g(['C...', '.C..']);
+    const r = findTarget(grid, none, 'C', 0);
+    expect(r.target).toEqual(pt(1, 1));
+    // Reserving the winner gives the runner-up.
+    const r2 = findTarget(grid, new Set([1 * 4 + 1]), 'C', 0);
+    expect(r2.target).toEqual(pt(0, 0));
+    expect(r2.path).toEqual([pt(0, 2), pt(0, 1)]);
+  });
+
+  it('skips a reserved target', () => {
+    const r = findTarget(g(['CC']), new Set([0]), 'C', 0);
+    expect(r.target).toEqual(pt(1, 0));
+    expect(r.path).toEqual([pt(0, 1), pt(1, 1)]);
+  });
+
+  it('returns null when every reachable pixel is reserved', () => {
+    expect(findTarget(g(['CC']), new Set([0, 1]), 'C', 0)).toBeNull();
+  });
+
+  it('builds a contiguous path through open cells ending next to the target', () => {
+    const grid = g(['A..C', 'B.BB', 'B...', 'BB.B']);
+    for (const startX of [0, 1, 2, 3]) {
+      const r = findTarget(grid, none, 'C', startX);
+      expect(r.target).toEqual(pt(3, 0));
+      const h = grid.length;
+      expect(r.path[0]).toEqual(pt(startX, h));
+      for (let i = 0; i < r.path.length; i++) {
+        const p = r.path[i];
+        expect(p.y === h || grid[p.y][p.x] === null).toBe(true);
+        if (i > 0) {
+          const q = r.path[i - 1];
+          expect(Math.abs(p.x - q.x) + Math.abs(p.y - q.y)).toBe(1);
+        }
+      }
+      const last = r.path[r.path.length - 1];
+      expect(Math.abs(last.x - 3) + Math.abs(last.y - 0)).toBe(1);
     }
   });
 });
