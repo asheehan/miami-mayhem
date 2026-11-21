@@ -210,7 +210,11 @@ export function drawLauncher(ctx, width, height, view) {
     ctx.fillStyle = C.white;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.font = font(b.labelH * 0.7, 800);
+    // shrink long names to fit the tile
+    const px = b.labelH * 0.7;
+    ctx.font = font(px, 800);
+    const tw = ctx.measureText(game.title).width;
+    if (tw > b.w * 0.96) ctx.font = font((px * b.w * 0.96) / tw, 800);
     ctx.fillText(game.title, b.x + b.w / 2, b.y + picH + b.labelH * 0.55);
     ctx.restore();
   }

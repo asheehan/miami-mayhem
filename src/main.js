@@ -23,6 +23,7 @@ function resize() {
 
 function open(game) {
   active = game.create({
+    canvas,
     exit() {
       active = null;
     },
