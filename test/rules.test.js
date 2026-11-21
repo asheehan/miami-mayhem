@@ -1,5 +1,13 @@
 import { describe, it, expect } from 'vitest';
-import { mulberry32, parseLevel, openDistances, reachableColours } from '../src/rules.js';
+import {
+  mulberry32,
+  parseLevel,
+  openDistances,
+  reachableColours,
+  splitBlocks,
+  buildQueue,
+} from '../src/rules.js';
+import { levels } from '../src/levels/index.js';
 
 // Builds a grid from row strings; '.' means open.
 function g(rows) {
@@ -90,5 +98,64 @@ describe('openDistances', () => {
     }
     expect(i).toBe(2 * w + 0);
     expect(steps).toBe(dist[1]);
+  });
+});
+
+describe('splitBlocks', () => {
+  it('keeps totals of 40 or less whole', () => {
+    expect(splitBlocks(7)).toEqual([7]);
+    expect(splitBlocks(40)).toEqual([40]);
+  });
+
+  it('splits larger totals into parts of 10-40 that sum exactly', () => {
+    for (const total of [41, 50, 99, 188]) {
+      for (let seed = 1; seed <= 50; seed++) {
+        const parts = splitBlocks(total, mulberry32(seed));
+        expect(parts.reduce((a, b) => a + b, 0)).toBe(total);
+        for (const p of parts) {
+          expect(p).toBeGreaterThanOrEqual(10);
+          expect(p).toBeLessThanOrEqual(40);
+        }
+      }
+    }
+  });
+});
+
+describe('buildQueue', () => {
+  it('Dino: blocks sum to each colour total and to 768', () => {
+    const dino = levels.find((l) => l.name === 'Dino');
+    const grid = parseLevel(dino);
+    const counts = {};
+    for (const row of dino.rows) for (const ch of row) counts[ch] = (counts[ch] || 0) + 1;
+    for (let seed = 1; seed <= 10; seed++) {
+      const queue = buildQueue(grid, mulberry32(seed));
+      const sums = {};
+      for (const b of queue) sums[b.colour] = (sums[b.colour] || 0) + b.count;
+      expect(sums).toEqual(counts);
+      expect(queue.reduce((a, b) => a + b.count, 0)).toBe(768);
+    }
+  });
+
+  it('puts shallow colours first', () => {
+    // Mean depths: C 0, B 1, A 2.5. With jitter of 1.5, A can only come first
+    // if its key lands in [1, 1.5) and both others land above it.
+    for (let seed = 1; seed <= 20; seed++) {
+      const queue = buildQueue(g(['AAAA', 'AAAA', 'BBBB', 'CCCC']), mulberry32(seed));
+      expect(queue.map((b) => b.colour).sort()).toEqual(['A', 'B', 'C']);
+      expect(['B', 'C']).toContain(queue[0].colour);
+    }
+  });
+
+  it('on a tall grid the bottom colour comes earlier on average', () => {
+    const rows = [];
+    for (let y = 0; y < 32; y++) rows.push((y < 16 ? 'A' : 'B').repeat(24));
+    for (let seed = 1; seed <= 10; seed++) {
+      const queue = buildQueue(g(rows), mulberry32(seed));
+      const mean = (c) => {
+        const idx = queue.map((b, i) => (b.colour === c ? i : -1)).filter((i) => i >= 0);
+        return idx.reduce((a, b) => a + b, 0) / idx.length;
+      };
+      expect(mean('B')).toBeLessThan(mean('A'));
+    }
   });
 });

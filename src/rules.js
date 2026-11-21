@@ -4,6 +4,8 @@
 // The virtual ground row y = h is always open. Cell index = y * w + x,
 // with indices up to (h + 1) * w - 1 to cover the ground row.
 
+import { JITTER } from './constants.js';
+
 export function mulberry32(seed) {
   let a = seed >>> 0;
   return function () {
@@ -126,4 +128,46 @@ export function reachableColours(grid, reserved) {
     }
   }
   return out;
+}
+
+// Split a colour's pixel total into block counts: whole if <= 40, else parts of 10-40.
+export function splitBlocks(total, rng) {
+  if (total <= 40) return [total];
+  const parts = [];
+  let rest = total;
+  while (rest > 40) {
+    const max = Math.min(40, rest - 10);
+    const size = 10 + Math.floor(rng() * (max - 10 + 1));
+    parts.push(size);
+    rest -= size;
+  }
+  parts.push(rest);
+  return parts;
+}
+
+// All blocks for a grid, shallow first. Each block's key is the mean depth of its
+// consecutive share of the colour's depth-sorted pixels, plus jitter in [-JITTER, JITTER].
+export function buildQueue(grid, rng) {
+  const h = grid.length;
+  const depths = new Map();
+  for (let y = 0; y < h; y++) {
+    for (const c of grid[y]) {
+      if (c === null) continue;
+      if (!depths.has(c)) depths.set(c, []);
+      depths.get(c).push(h - 1 - y);
+    }
+  }
+  const keyed = [];
+  for (const [colour, ds] of depths) {
+    ds.sort((a, b) => a - b);
+    let i = 0;
+    for (const count of splitBlocks(ds.length, rng)) {
+      let sum = 0;
+      for (let k = 0; k < count; k++) sum += ds[i + k];
+      i += count;
+      keyed.push({ colour, count, key: sum / count + (rng() * 2 - 1) * JITTER });
+    }
+  }
+  keyed.sort((a, b) => a.key - b.key);
+  return keyed.map(({ colour, count }) => ({ colour, count }));
 }
