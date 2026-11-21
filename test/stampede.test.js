@@ -4,6 +4,7 @@ import {
 } from '../src/games/stampede/track.js';
 import {
   createRun, step, steer, count, strikerState, crowdRadius, MAX_VISIBLE, FINALE_MIN,
+  towerState, cannonState, finaleState, pickFinale, FINALES, FINALE_FULL,
 } from '../src/games/stampede/sim.js';
 
 const DT = 1 / 60;
@@ -217,5 +218,116 @@ describe('the finish', () => {
     expect(b.score).toBe(600);
     expect(b.puck).toBeCloseTo(1);
     expect(b.bell).toBe(true);
+  });
+
+  it('the finale is picked at random when the run is created, or forced', () => {
+    const track = emptyTrack({ finishZ: 20 });
+    expect(createRun(track, 1, { random: () => 0 }).finaleKind).toBe('striker');
+    expect(createRun(track, 1, { random: () => 0.5 }).finaleKind).toBe('tower');
+    expect(createRun(track, 1, { random: () => 0.999 }).finaleKind).toBe('cannon');
+    expect(createRun(track, 1, { random: () => 0, finale: 'cannon' }).finaleKind).toBe('cannon');
+    expect(createRun(track, 1, { random: () => 0.5, finale: 'nonsense' }).finaleKind).toBe('tower');
+    expect(pickFinale(() => 1)).toBe('cannon');
+    const seen = new Set();
+    for (let i = 0; i < 200; i++) seen.add(createRun(track).finaleKind);
+    expect([...seen].sort()).toEqual([...FINALES].sort());
+  });
+});
+
+describe('every finale', () => {
+  const finishWith = (n, finale) => {
+    const run = createRun(emptyTrack({ finishZ: 20 }), n, { finale });
+    for (let i = 0; i < 3000 && run.status === 'running'; i++) step(run, DT);
+    return run;
+  };
+  // Play the finale out, collecting its state every frame.
+  const playOut = (n, finale) => {
+    const run = finishWith(n, finale);
+    expect(run.status).toBe('finale');
+    expect(run.finaleKind).toBe(finale);
+    const states = [];
+    for (let i = 0; i < 60 * 12; i++) {
+      states.push({ t: run.endTime, ...finaleState(run) });
+      step(run, DT);
+    }
+    return states;
+  };
+  const sizes = [13, 30, 59, 60, 150, 400];
+
+  for (const finale of FINALES) {
+    describe(finale, () => {
+      for (const n of sizes) {
+        it(`with ${n}: the score climbs to ten per runner and it ends in 5 to 9 seconds`, () => {
+          const states = playOut(n, finale);
+          expect(states[0].score).toBe(0);
+          for (let i = 1; i < states.length; i++) expect(states[i].score).toBeGreaterThanOrEqual(states[i - 1].score);
+          const last = states[states.length - 1];
+          expect(last.score).toBe(n * 10);
+          expect(last.total).toBe(n * 10);
+          expect(last.done).toBe(true);
+          const doneAt = states.find((s) => s.done).t;
+          expect(doneAt).toBeGreaterThan(5);
+          expect(doneAt).toBeLessThan(9);
+          // the score is complete by the time the buttons show
+          expect(states.find((s) => s.done).score).toBe(n * 10);
+          expect(last.celebrate).toBe(n >= FINALE_FULL);
+          // nobody celebrates before the end of the show
+          expect(states.some((s) => s.celebrate && s.score < s.total)).toBe(false);
+        });
+      }
+    });
+  }
+
+  const atEnd = (n, finale) => {
+    const states = playOut(n, finale);
+    return states[states.length - 1];
+  };
+
+  it('the human tower grows taller with more runners, and 60 reaches the star', () => {
+    const h = [13, 30, 59, 60, 150].map((n) => atEnd(n, 'tower'));
+    for (let i = 1; i < h.length; i++) expect(h[i].height).toBeGreaterThanOrEqual(h[i - 1].height);
+    expect(h[0].height).toBeLessThan(h[1].height);
+    expect(h[1].height).toBeLessThan(h[2].height);
+    expect(h[2].height).toBeLessThan(1);
+    expect(h[3].height).toBe(1);
+    expect(h[4].height).toBe(1);
+    expect(h[2].star).toBe(false);
+    expect(h[3].star).toBe(true);
+    // every layer has someone in it
+    for (const [n, s] of [[13, h[0]], [30, h[1]], [60, h[3]]]) expect(s.layers).toBeLessThanOrEqual(n);
+  });
+
+  it('the human tower builds from the bottom up and never shrinks', () => {
+    const states = playOut(45, 'tower');
+    for (let i = 1; i < states.length; i++) expect(states[i].built).toBeGreaterThanOrEqual(states[i - 1].built);
+    expect(states[states.length - 1].built).toBe(states[0].layers);
+  });
+
+  it('the cannon fires them further with more runners, and 60 reaches the target', () => {
+    const c = [13, 30, 59, 60, 150].map((n) => atEnd(n, 'cannon'));
+    expect(c[0].distance).toBeLessThan(c[1].distance);
+    expect(c[1].distance).toBeLessThan(c[2].distance);
+    expect(c[2].distance).toBeLessThan(c[3].distance);
+    expect(c[3].distance).toBe(c[4].distance);
+    expect(c[2].hit).toBe(false);
+    expect(c[3].hit).toBe(true);
+  });
+
+  it('the cannon loads before it fires, and the crowd flies forward only after firing', () => {
+    const states = playOut(40, 'cannon');
+    const fire = states.findIndex((s) => s.fired);
+    expect(fire).toBeGreaterThan(0);
+    expect(states[fire - 1].load).toBe(1);
+    for (let i = 0; i < fire; i++) expect(states[i].distance).toBe(0);
+    for (let i = 1; i < states.length; i++) expect(states[i].distance).toBeGreaterThanOrEqual(states[i - 1].distance);
+  });
+
+  it('finaleState follows the run\'s finale', () => {
+    const run = finishWith(20, 'tower');
+    expect(finaleState(run)).toEqual(towerState(run));
+    run.finaleKind = 'cannon';
+    expect(finaleState(run)).toEqual(cannonState(run));
+    run.finaleKind = 'striker';
+    expect(finaleState(run)).toEqual(strikerState(run));
   });
 });
