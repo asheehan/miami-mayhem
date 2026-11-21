@@ -32,16 +32,17 @@ function roundRect(ctx, x, y, w, h, r) {
   ctx.closePath();
 }
 
-// Pure. One tile per game in a two-column grid under the title, plus a "more soon" tile
-// when that leaves a gap. Each rect covers the picture and its name label.
+// Pure. One tile per game in a grid under the title (two columns, three once there are
+// more than four games), plus a "more soon" tile when that leaves a gap. Each rect covers
+// the picture and its name label.
 export function launcherButtons(width, height, games) {
-  const cols = 2;
+  const cols = games.length > 4 ? 3 : 2;
   const count = games.length + (games.length % cols ? 1 : 0);
   const rows = Math.ceil(count / cols);
   const edge = Math.max(16, height * 0.03);
   const top = height * 0.36;
   const bottom = height - edge;
-  const gap = Math.max(16, width * 0.05);
+  const gap = Math.max(16, width * (cols > 2 ? 0.04 : 0.05));
   const labelH = Math.max(32, height * 0.045);
   const maxW = (width - gap * (cols + 1)) / cols;
   const maxH = (bottom - top - gap * (rows - 1)) / rows;
@@ -193,7 +194,7 @@ export function drawLauncher(ctx, width, height, view) {
       ctx.textBaseline = 'middle';
       ctx.font = font(b.w * 0.42);
       ctx.fillText('?', b.x + b.w / 2, b.y + picH * 0.45);
-      ctx.font = font(b.labelH * 0.5, 800);
+      ctx.font = font(Math.min(b.labelH * 0.5, b.w * 0.15), 800);
       ctx.fillText('More games', b.x + b.w / 2, b.y + picH * 0.8);
       ctx.fillText('soon!', b.x + b.w / 2, b.y + picH * 0.8 + b.labelH * 0.62);
       ctx.restore();
