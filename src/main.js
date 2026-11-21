@@ -1,9 +1,10 @@
 // Screens, animation loop and saved progress.
 import { createGame, placeBlock, tick } from './game.js';
 import { dealLevel } from './deal.js';
-import { computeLayout, draw, homeButtons, overlayButtons, PAGE_SIZE } from './render.js';
+import { computeLayout, draw, homeButtons, overlayButtons, settingsButtons, PAGE_SIZE } from './render.js';
 import { attachInput } from './input.js';
-import { levels } from './levels/index.js';
+import { levels, doubled } from './levels/index.js';
+import { HARD } from './constants.js';
 
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
@@ -34,6 +35,27 @@ function saveProgress(names) {
   }
 }
 
+const SETTINGS_KEY = 'pixel-ants-settings';
+
+function loadDifficulty() {
+  try {
+    return JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}').difficulty === 'hard' ? 'hard' : 'easy';
+  } catch {
+    return 'easy';
+  }
+}
+
+function saveDifficulty(difficulty) {
+  try {
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify({ difficulty }));
+  } catch {
+    // not kept if storage is unavailable
+  }
+}
+
+// Completed pictures are remembered separately for each difficulty.
+const suffixFor = (difficulty) => (difficulty === 'hard' ? ' (hard)' : '');
+
 const view = {
   screen: 'home',
   state: null,
@@ -44,8 +66,13 @@ const view = {
   time: 0,
   progress: loadProgress(),
   page: 0,
+  difficulty: loadDifficulty(),
+  suffix: '',
+  loading: false,
   levels,
 };
+view.suffix = suffixFor(view.difficulty);
+let playLevel = levels[0]; // the level being played, at the chosen difficulty
 let layout = null;
 let levelIndex = 0;
 let size = { w: 0, h: 0 };
@@ -55,8 +82,11 @@ function relayout() {
   if (view.screen === 'home') {
     layout = { width: w, height: h };
     view.buttons = homeButtons(w, h, levels, view.page);
+  } else if (view.screen === 'settings') {
+    layout = { width: w, height: h };
+    view.buttons = settingsButtons(w, h);
   } else {
-    layout = computeLayout(w, h, levels[levelIndex]);
+    layout = computeLayout(w, h, playLevel);
     view.buttons = view.overlay ? overlayButtons(w, h, view.overlay, levelIndex < levels.length - 1) : [];
   }
 }
@@ -79,15 +109,22 @@ function showHome() {
   relayout();
 }
 
+// Dealing a level can take a moment (it test-plays shuffles until one is winnable), so
+// show a message first and deal on the next turn of the event loop.
 function startLevel(i) {
-  levelIndex = i;
-  const level = levels[i];
-  const deal = dealLevel(level, Date.now() >>> 0 || 1, dealOptions);
-  view.state = createGame(level, deal, gameOptions);
-  view.screen = 'play';
+  if (view.loading) return;
+  view.loading = true;
   view.drag = null;
-  view.overlay = null;
-  relayout();
+  setTimeout(() => {
+    levelIndex = i;
+    playLevel = view.difficulty === 'hard' ? doubled(levels[i], HARD) : levels[i];
+    const deal = dealLevel(playLevel, Date.now() >>> 0 || 1, dealOptions);
+    view.state = createGame(playLevel, deal, gameOptions);
+    view.screen = 'play';
+    view.overlay = null;
+    view.loading = false;
+    relayout();
+  }, 40);
 }
 
 function showOverlay(kind) {
@@ -95,7 +132,7 @@ function showOverlay(kind) {
   view.overlayTime = view.time;
   view.drag = null;
   if (kind === 'won') {
-    const name = levels[levelIndex].name;
+    const name = levels[levelIndex].name + view.suffix;
     if (!view.progress.includes(name)) {
       view.progress = [...view.progress, name];
       saveProgress(view.progress);
@@ -110,7 +147,7 @@ const hit = (r, x, y, pad = 0) =>
 attachInput(canvas, {
   onPickUp(x, y) {
     const state = view.state;
-    if (view.screen !== 'play' || view.overlay || !state || state.status !== 'playing') return false;
+    if (view.loading || view.screen !== 'play' || view.overlay || !state || state.status !== 'playing') return false;
     const i = layout.pickerRects.findIndex((r) => hit(r, x, y));
     if (i === -1 || !state.picker[i]) return false;
     view.drag = { pickerIndex: i, x, y };
@@ -138,11 +175,25 @@ attachInput(canvas, {
     if (best !== -1) placeBlock(state, drag.pickerIndex, best);
   },
   onTap(x, y) {
+    if (view.loading) return;
     const b = view.buttons.find((r) => hit(r, x, y));
+    if (view.screen === 'settings') {
+      if (!b) return;
+      if (b.id === 'back') showHome();
+      else {
+        view.difficulty = b.id;
+        view.suffix = suffixFor(b.id);
+        saveDifficulty(b.id);
+      }
+      return;
+    }
     if (view.screen === 'home') {
       if (!b) return;
       if (b.id === 'level') startLevel(b.index);
-      else {
+      else if (b.id === 'settings') {
+        view.screen = 'settings';
+        relayout();
+      } else {
         view.page += b.id === 'next' ? 1 : -1;
         relayout();
       }

@@ -137,14 +137,14 @@ export function reachableColours(grid, reserved) {
   return out;
 }
 
-// Split a colour's pixel total into block counts: whole if <= 40, else parts of 10-40.
-export function splitBlocks(total, rng) {
-  if (total <= 40) return [total];
+// Split a colour's pixel total into block counts: whole if <= max, else parts of min..max.
+export function splitBlocks(total, rng, min = 10, max = 40) {
+  if (total <= max) return [total];
   const parts = [];
   let rest = total;
-  while (rest > 40) {
-    const max = Math.min(40, rest - 10);
-    const size = 10 + Math.floor(rng() * (max - 10 + 1));
+  while (rest > max) {
+    const top = Math.min(max, rest - min);
+    const size = min + Math.floor(rng() * (top - min + 1));
     parts.push(size);
     rest -= size;
   }
@@ -153,8 +153,12 @@ export function splitBlocks(total, rng) {
 }
 
 // All blocks for a grid, shallow first. Each block's key is the mean depth of its
-// consecutive share of the colour's depth-sorted pixels, plus jitter in [-JITTER, JITTER].
-export function buildQueue(grid, rng) {
+// consecutive share of the colour's depth-sorted pixels, plus jitter in [-jitter, jitter] rows.
+// opts = { blockMin, blockMax, scale }; scale widens the jitter for finer grids.
+export function buildQueue(grid, rng, opts = {}) {
+  const min = opts.blockMin ?? 10;
+  const max = opts.blockMax ?? 40;
+  const jitter = JITTER * (opts.scale ?? 1);
   const h = grid.length;
   const depths = new Map();
   for (let y = 0; y < h; y++) {
@@ -168,11 +172,11 @@ export function buildQueue(grid, rng) {
   for (const [colour, ds] of depths) {
     ds.sort((a, b) => a - b);
     let i = 0;
-    for (const count of splitBlocks(ds.length, rng)) {
+    for (const count of splitBlocks(ds.length, rng, min, max)) {
       let sum = 0;
       for (let k = 0; k < count; k++) sum += ds[i + k];
       i += count;
-      keyed.push({ colour, count, key: sum / count + (rng() * 2 - 1) * JITTER });
+      keyed.push({ colour, count, key: sum / count + (rng() * 2 - 1) * jitter });
     }
   }
   keyed.sort((a, b) => a.key - b.key);

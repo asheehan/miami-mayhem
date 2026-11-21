@@ -18,6 +18,7 @@ export function createGame(level, deal, options = {}) {
   const grid = parseLevel(level);
   const h = grid.length;
   const w = grid[0].length;
+  const scale = level.scale ?? 1;
   const queue = deal.queue.map((b) => ({ colour: b.colour, count: b.count }));
   const pickerSize = level.pickerSize ?? 9;
   const picker = [];
@@ -26,6 +27,7 @@ export function createGame(level, deal, options = {}) {
     level,
     w,
     h,
+    scale,
     grid,
     reserved: new Set(),
     remaining: w * h,
@@ -35,8 +37,8 @@ export function createGame(level, deal, options = {}) {
     ants: [],
     status: 'playing',
     time: 0,
-    antSpeed: options.antSpeed ?? ANT_SPEED,
-    spawnInterval: options.spawnInterval ?? SPAWN_INTERVAL,
+    antSpeed: options.antSpeed ?? (level.antSpeed ?? ANT_SPEED * scale),
+    spawnInterval: options.spawnInterval ?? (level.spawnInterval ?? SPAWN_INTERVAL),
     targeting: options.targeting ?? TARGETING,
   };
 }
@@ -61,7 +63,7 @@ export function isStuck(state) {
 
 // Polyline for an ant: slot centre, then the path cells.
 function makeAnt(state, slotIndex, colour, found) {
-  const points = [{ x: slotX(state, slotIndex), y: state.h + SLOT_Y }, ...found.path];
+  const points = [{ x: slotX(state, slotIndex), y: state.h + SLOT_Y * state.scale + (state.scale - 1) / 2 }, ...found.path];
   const lengths = [0];
   for (let i = 1; i < points.length; i++) {
     const a = points[i - 1];

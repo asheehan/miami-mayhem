@@ -22,54 +22,65 @@ function pickerShape(cols, n) {
   return { rows, height: rows * BLOCK + (rows - 1) * PICKER_GAP };
 }
 
-// Pure. Picks the picker column count from [3, 5, 9] that gives the largest cell size.
+// Pure. Picks the picker column count from [3, 5, 9] that gives the largest picture.
+// Sizes are worked out in units of a standard cell (1/24 of the picture width); a level
+// with `scale` 2 has cells half that size, so blocks and slots stay the same on screen.
 export function computeLayout(width, height, level) {
-  const W = level.rows[0].length;
-  const H = level.rows.length;
+  const k = level.scale ?? 1;
+  const cols = level.rows[0].length;
+  const rows = level.rows.length;
+  const W = cols / k;
+  const H = rows / k;
   const nSlots = level.slots ?? 3;
   const nPicker = level.pickerSize ?? 9;
   const slotGap = SLOT_Y + 0.5; // picture bottom edge to slot centre
   let best = null;
-  for (const cols of COLUMN_CHOICES) {
-    const c = Math.min(cols, nPicker);
-    const { rows, height: ph } = pickerShape(c, nPicker);
+  for (const choice of COLUMN_CHOICES) {
+    const c = Math.min(choice, nPicker);
+    const { height: ph } = pickerShape(c, nPicker);
     const needW = Math.max(W + 2, c * (BLOCK + PICKER_GAP) + 1.5);
     const needH = MARGIN + H + slotGap + BLOCK / 2 + 1 + ph + MARGIN;
-    const cell = Math.min(width / needW, height / needH);
-    if (!best || cell > best.cell + 1e-9) best = { cols: c, rows, cell, needH };
+    const unit = Math.min(width / needW, height / needH);
+    if (!best || unit > best.unit + 1e-9) best = { pickerCols: c, unit, needH };
   }
-  const { cols, cell, needH } = best;
-  // Cell (x, y) is centred at toScreen(x, y); the picture spans -0.5 .. W - 0.5.
-  const originX = (width - W * cell) / 2;
-  const originY = (height - needH * cell) / 2 + MARGIN * cell;
+  const { pickerCols, unit, needH } = best;
+  const cell = unit / k;
+  // Cell (x, y) is centred at toScreen(x, y); the picture spans -0.5 .. cols - 0.5.
+  const originX = (width - W * unit) / 2;
+  const originY = (height - needH * unit) / 2 + MARGIN * unit;
   const toScreen = (gx, gy) => ({ x: originX + (gx + 0.5) * cell, y: originY + (gy + 0.5) * cell });
-  const size = BLOCK * cell;
+  const size = BLOCK * unit;
 
   const slotRects = [];
   for (let i = 0; i < nSlots; i++) {
-    const c = toScreen(((i + 0.5) * W) / nSlots - 0.5, H + SLOT_Y);
+    const c = toScreen(((i + 0.5) * cols) / nSlots - 0.5, rows + SLOT_Y * k + (k - 1) / 2);
     slotRects.push({ x: c.x - size / 2, y: c.y - size / 2, w: size, h: size });
   }
 
   const pickerRects = [];
-  const pickerTop = slotRects[0].y + size + cell;
+  const pickerTop = slotRects[0].y + size + unit;
   for (let i = 0; i < nPicker; i++) {
-    const row = Math.floor(i / cols);
-    const inRow = Math.min(cols, nPicker - row * cols);
-    const col = i - row * cols;
-    const rowW = inRow * size + (inRow - 1) * PICKER_GAP * cell;
+    const row = Math.floor(i / pickerCols);
+    const inRow = Math.min(pickerCols, nPicker - row * pickerCols);
+    const col = i - row * pickerCols;
+    const rowW = inRow * size + (inRow - 1) * PICKER_GAP * unit;
     pickerRects.push({
-      x: width / 2 - rowW / 2 + col * (size + PICKER_GAP * cell),
-      y: pickerTop + row * (size + PICKER_GAP * cell),
+      x: width / 2 - rowW / 2 + col * (size + PICKER_GAP * unit),
+      y: pickerTop + row * (size + PICKER_GAP * unit),
       w: size,
       h: size,
     });
   }
 
-  const hb = Math.max(44, 2 * cell);
+  const hb = Math.max(44, 2 * unit);
   const homeBtn = { x: 8, y: 8, w: hb, h: hb };
+  // On a finer grid ants are drawn a little bigger than a cell so they stay visible.
+  const antSize = k === 1 ? cell : cell * 1.5;
 
-  return { width, height, W, H, cell, originX, originY, toScreen, slotRects, pickerRects, homeBtn, blockSize: BLOCK };
+  return {
+    width, height, W: cols, H: rows, cell, unit, antSize, originX, originY, toScreen,
+    slotRects, pickerRects, homeBtn, blockSize: BLOCK * k,
+  };
 }
 
 // ---------- helpers ----------
@@ -168,7 +179,7 @@ function drawAnt(ctx, layout, ant, time, carry) {
     if (dx * dx + dy * dy > 1e-6) angle = Math.atan2(dy, dx);
   }
   headings.set(ant, { x: ant.pos.x, y: ant.pos.y, angle });
-  drawAntAt(ctx, p.x, p.y, angle, layout.cell, time * 24 + ant.target.x + ant.target.y, carry);
+  drawAntAt(ctx, p.x, p.y, angle, layout.antSize, time * 24 + ant.target.x + ant.target.y, carry);
 }
 
 // An ant centred at (x, y) facing `angle`, about `s` px long. `phase` drives the leg wiggle.
@@ -231,7 +242,7 @@ function drawHomeButton(ctx, r) {
 
 function drawPlay(ctx, layout, view) {
   const { state, drag, time } = view;
-  const { cell } = layout;
+  const cell = layout.unit;
   const palette = state.level.palette;
 
   // soil band from the picture down to below the slots
@@ -314,6 +325,8 @@ export function homeButtons(width, height, levels, page = 0) {
     h,
     labelH,
   }));
+  const gear = Math.max(44, Math.min(64, width * 0.11));
+  buttons.push({ id: 'settings', x: width - gear - 12, y: 12, w: gear, h: gear });
   if (pages > 1) {
     const y = height - edge - navH;
     const off = Math.max(navH * 1.6, width * 0.22);
@@ -362,15 +375,25 @@ function drawHome(ctx, layout, view) {
   ctx.fillStyle = COLOURS.text;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  const titlePx = Math.min(height * 0.08, width / 6.5);
+  const titlePx = Math.min(height * 0.08, width / 7);
   ctx.font = font(titlePx);
-  ctx.fillText('Pixel Ants', width / 2, height * 0.09);
+  ctx.fillText('Pixel Ants', width / 2, height * 0.1);
   // a little ant marching under the title
   const span = Math.min(width * 0.6, titlePx * 6);
   const ax = width / 2 - span / 2 + ((t * 60) % span);
-  drawAntAt(ctx, ax, height * 0.09 + titlePx * 0.75, 0, titlePx * 0.45, t * 20, null, '#ffd93b');
+  drawAntAt(ctx, ax, height * 0.1 + titlePx * 0.75, 0, titlePx * 0.45, t * 20, null, '#ffd93b');
+
+  if (view.suffix) {
+    ctx.fillStyle = COLOURS.button;
+    ctx.font = font(titlePx * 0.32, 800);
+    ctx.fillText('HARD', width / 2, height * 0.1 + titlePx * 1.35);
+  }
 
   for (const b of view.buttons) {
+    if (b.id === 'settings') {
+      drawGear(ctx, b);
+      continue;
+    }
     if (b.id !== 'level') {
       // round page button with an arrow
       const cx = b.x + b.w / 2;
@@ -400,14 +423,14 @@ function drawHome(ctx, layout, view) {
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText(level.name, b.x + b.w / 2, b.y + picH + b.labelH * 0.55);
-    if (view.progress.includes(level.name)) {
+    if (view.progress.includes(level.name + view.suffix)) {
       const r = Math.max(18, b.w * 0.14);
       drawTick(ctx, b.x + b.w - r * 0.6, b.y + r * 0.6, r);
     }
   }
   // page dots between the arrows
   const pages = Math.ceil(view.levels.length / PAGE_SIZE);
-  const nav = view.buttons.find((b) => b.id !== 'level');
+  const nav = view.buttons.find((b) => b.id === 'prev' || b.id === 'next');
   if (pages > 1 && nav) {
     const r = nav.h * 0.11;
     for (let i = 0; i < pages; i++) {
@@ -417,6 +440,78 @@ function drawHome(ctx, layout, view) {
       ctx.fill();
     }
   }
+}
+
+// ---------- settings ----------
+
+function drawGear(ctx, b) {
+  const cx = b.x + b.w / 2;
+  const cy = b.y + b.h / 2;
+  const r = b.w * 0.3;
+  ctx.fillStyle = 'rgba(255,255,255,0.18)';
+  roundRect(ctx, b.x, b.y, b.w, b.h, b.w * 0.22);
+  ctx.fill();
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.fillStyle = COLOURS.text;
+  for (let i = 0; i < 8; i++) {
+    ctx.rotate(Math.PI / 4);
+    ctx.fillRect(-r * 0.22, -r * 1.3, r * 0.44, r * 0.6);
+  }
+  ctx.beginPath();
+  ctx.arc(0, 0, r, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = '#4a4660';
+  ctx.beginPath();
+  ctx.arc(0, 0, r * 0.42, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+}
+
+// Pure. Settings screen buttons: difficulty choices and a way back.
+export function settingsButtons(width, height) {
+  const bw = Math.min(width * 0.8, 420);
+  const bh = Math.max(64, Math.min(96, height * 0.085));
+  const x = (width - bw) / 2;
+  const top = height * 0.3;
+  return [
+    { id: 'easy', label: 'Easy', x, y: top, w: bw, h: bh },
+    { id: 'hard', label: 'Hard', x, y: top + bh * 1.3, w: bw, h: bh },
+    { id: 'back', label: 'Done', x, y: height - Math.max(24, height * 0.05) - bh, w: bw, h: bh },
+  ];
+}
+
+function drawSettings(ctx, layout, view) {
+  const { width, height } = layout;
+  ctx.fillStyle = COLOURS.text;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  const titlePx = Math.min(height * 0.065, width / 8);
+  ctx.font = font(titlePx);
+  ctx.fillText('Settings', width / 2, height * 0.09);
+  ctx.font = font(titlePx * 0.5, 800);
+  ctx.fillStyle = 'rgba(255,255,255,0.7)';
+  ctx.fillText('How hard?', width / 2, height * 0.22);
+  for (const b of view.buttons) {
+    if (b.id === 'back') {
+      drawButton(ctx, b, false);
+      continue;
+    }
+    const on = view.difficulty === b.id;
+    drawButton(ctx, b, on);
+    if (!on) {
+      ctx.fillStyle = 'rgba(23,21,42,0.55)';
+      roundRect(ctx, b.x, b.y, b.w, b.h, b.h * 0.3);
+      ctx.fill();
+    }
+  }
+  const hard = view.buttons.find((b) => b.id === 'hard');
+  ctx.fillStyle = 'rgba(255,255,255,0.7)';
+  ctx.font = font(Math.min(titlePx * 0.36, width / 24), 700);
+  const y = hard.y + hard.h * 1.45;
+  const lh = Math.min(titlePx * 0.5, width / 17);
+  ctx.fillText('Hard uses the same pictures with', width / 2, y);
+  ctx.fillText('four times as many pixels.', width / 2, y + lh);
 }
 
 // ---------- overlays ----------
@@ -569,12 +664,21 @@ function drawWin(ctx, layout, view) {
 export function draw(ctx, layout, view) {
   ctx.fillStyle = COLOURS.bg;
   ctx.fillRect(0, 0, layout.width, layout.height);
-  if (view.screen === 'home') {
-    drawHome(ctx, layout, view);
-    return;
+  if (view.screen === 'home') drawHome(ctx, layout, view);
+  else if (view.screen === 'settings') drawSettings(ctx, layout, view);
+  else if (view.state) {
+    drawPlay(ctx, layout, view);
+    if (view.overlay === 'won') drawWin(ctx, layout, view);
+    else if (view.overlay === 'stuck') drawStuck(ctx, layout, view);
   }
-  if (!view.state) return;
-  drawPlay(ctx, layout, view);
-  if (view.overlay === 'won') drawWin(ctx, layout, view);
-  else if (view.overlay === 'stuck') drawStuck(ctx, layout, view);
+  if (view.loading) {
+    // shown for a moment while a level is being dealt
+    ctx.fillStyle = 'rgba(10,8,20,0.8)';
+    ctx.fillRect(0, 0, layout.width, layout.height);
+    ctx.fillStyle = COLOURS.text;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.font = font(Math.min(layout.height * 0.045, layout.width / 13));
+    ctx.fillText('Waking up the ants…', layout.width / 2, layout.height / 2);
+  }
 }

@@ -79,8 +79,8 @@ describe('homeButtons paging', () => {
       const p1 = homeButtons(w, h, eight, 1);
       expect(p0.filter((b) => b.id === 'level').map((b) => b.index)).toEqual([0, 1, 2, 3]);
       expect(p1.filter((b) => b.id === 'level').map((b) => b.index)).toEqual([4, 5, 6, 7]);
-      expect(p0.filter((b) => b.id !== 'level').map((b) => b.id)).toEqual(['next']);
-      expect(p1.filter((b) => b.id !== 'level').map((b) => b.id)).toEqual(['prev']);
+      expect(p0.filter((b) => b.id !== 'level').map((b) => b.id)).toEqual(['settings', 'next']);
+      expect(p1.filter((b) => b.id !== 'level').map((b) => b.id)).toEqual(['settings', 'prev']);
       for (const b of [...p0, ...p1]) {
         expect(b.x).toBeGreaterThanOrEqual(0);
         expect(b.x + b.w).toBeLessThanOrEqual(w);
@@ -94,6 +94,42 @@ describe('homeButtons paging', () => {
 
   it('shows no page arrows when everything fits on one page', async () => {
     const { homeButtons } = await import('../src/render.js');
-    expect(homeButtons(820, 1180, eight.slice(0, 4), 0).every((b) => b.id === 'level')).toBe(true);
+    expect(homeButtons(820, 1180, eight.slice(0, 4), 0).map((b) => b.id)).toEqual(['level', 'level', 'level', 'level', 'settings']);
   });
+});
+
+describe('hard difficulty (double resolution)', () => {
+  it('doubles every pixel into a 2 x 2 square', async () => {
+    const { doubled } = await import('../src/levels/index.js');
+    const d = doubled({ name: 'T', palette: {}, rows: ['AB', 'CD'] }, { blockMax: 80 });
+    expect(d.rows).toEqual(['AABB', 'AABB', 'CCDD', 'CCDD']);
+    expect(d.scale).toBe(2);
+    expect(d.blockMax).toBe(80);
+  });
+
+  for (const [w, h] of [[820, 1180], [390, 844]]) {
+    it(`${w}x${h}: slots, picker and picture sit in the same place as on easy`, async () => {
+      const { doubled } = await import('../src/levels/index.js');
+      const easy = computeLayout(w, h, level);
+      const hard = computeLayout(w, h, doubled(level));
+      expect(hard.cell).toBeCloseTo(easy.cell / 2);
+      hard.pickerRects.forEach((r, i) => {
+        expect(r.x).toBeCloseTo(easy.pickerRects[i].x);
+        expect(r.y).toBeCloseTo(easy.pickerRects[i].y);
+      });
+      hard.slotRects.forEach((r, i) => {
+        expect(r.w).toBeCloseTo(easy.slotRects[i].w);
+        expect(r.x).toBeCloseTo(easy.slotRects[i].x);
+        expect(r.y).toBeCloseTo(easy.slotRects[i].y);
+      });
+      const a = easy.toScreen(-0.5, -0.5);
+      const b = hard.toScreen(-0.5, -0.5);
+      expect(b.x).toBeCloseTo(a.x);
+      expect(b.y).toBeCloseTo(a.y);
+      const c = easy.toScreen(23.5, 31.5);
+      const d = hard.toScreen(47.5, 63.5);
+      expect(d.x).toBeCloseTo(c.x);
+      expect(d.y).toBeCloseTo(c.y);
+    });
+  }
 });

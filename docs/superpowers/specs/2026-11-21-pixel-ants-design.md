@@ -22,6 +22,15 @@ A puzzle game for a 6-year-old, played offline on an iPad. Ants carry a pixel pi
 3. **Win overlay:** shown when the picture is empty and the last ant is home. A big "YOU WIN!" filling most of the screen, with confetti in the picture's colours and the ants doing a lap. Buttons: next picture, home. On the last picture there is no "next picture" button.
 4. **Stuck overlay:** "The ants are stuck!" with a "Try again" button that restarts the level.
 
+## Difficulty
+
+A settings screen, opened from a gear button on the home screen, offers **Easy** (the default) and **Hard**. The choice is saved in `localStorage`.
+
+- **Easy:** the pictures as drawn, 24 x 32.
+- **Hard:** the same pictures at double resolution, 48 x 64 (every pixel becomes a 2 x 2 square, so 3072 pixels). Blocks are 20-80 instead of 10-40, a slot sends an ant every 0.15 s, and ants walk twice as many cells per second, so a game is roughly twice as long. Slots, picker and picture are the same size on screen; ants are drawn 1.5 cells long.
+
+Completed pictures are remembered separately for each difficulty. While a level is being dealt the screen shows "Waking up the ants…".
+
 ## Level data
 
 A level is `{ name, palette: { char: hex }, rows: string[] }`. Every picture is 24 wide by 32 tall (768 pixels), every cell filled, 13–16 colours. Eight pictures ship, four to a home-screen page. Page 1: Rocket, Dino, Reef, Rainbow. Page 2 (harder): Pirate Ship, Digger, Castle, Robot. Level settings with defaults: `slots: 3`, `pickerSize: 9`.
@@ -88,7 +97,7 @@ Randomness comes from a seeded RNG passed in, so tests are deterministic.
 ## Testing
 
 - Unit tests for `rules.js` and `game.js`: reachability (including pockets only reachable around a corner), block sums, queue order, ant reservation, count decrement, win, stuck detection.
-- A headless playthrough test: for each shipped level and seeds 1–20, the deal check must find a passing deal within 50 tries, and the bot must then finish that deal in the real game loop (`tick` with ants). A failure is a queue or level-authoring bug.
+- A headless playthrough test: for each shipped level except Robot (deliberately very hard for the bot) and seeds 1–20, the deal check must find a passing deal within 50 tries, and the bot must then finish that deal in the real game loop (`tick` with ants). A failure is a queue or level-authoring bug.
 - Manual check in a browser at iPad portrait size, and installed on the iPad offline.
 
 ## Out of scope

@@ -48,7 +48,7 @@ export function dealLevel(level, seed, options = {}) {
   let deal = null;
   for (let t = 0; t < MAX_DEAL_TRIES; t++) {
     const s = seed + t;
-    const queue = buildQueue(grid, mulberry32(s));
+    const queue = buildQueue(grid, mulberry32(s), level);
     const passed = simulateDeal(level, queue, options);
     deal = { queue, seed: s, passed };
     if (passed) return deal;

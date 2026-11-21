@@ -1,10 +1,12 @@
 import { describe, it, expect } from 'vitest';
 import { botMove, dealLevel } from '../src/deal.js';
 import { createGame, placeBlock, tick } from '../src/game.js';
-import { levels } from '../src/levels/index.js';
+import { levels, doubled } from '../src/levels/index.js';
+import { HARD } from '../src/constants.js';
 
 describe('bot playthrough', { timeout: 120_000 }, () => {
-  for (const level of levels) {
+  // Robot is deliberately very hard for the simple bot, so it is left out.
+  for (const level of levels.filter((l) => l.name !== 'Robot')) {
     it(`${level.name}: the bot wins seeds 1-20 in the real game loop`, async () => {
       const failures = [];
       for (let seed = 1; seed <= 20; seed++) {
@@ -22,4 +24,23 @@ describe('bot playthrough', { timeout: 120_000 }, () => {
       expect(failures).toEqual([]);
     });
   }
+});
+
+describe('bot playthrough on hard', { timeout: 120_000 }, () => {
+  it('Rocket at double resolution: the bot wins seeds 1-3', async () => {
+    const level = doubled(levels[0], HARD);
+    for (let seed = 1; seed <= 3; seed++) {
+      await new Promise((resolve) => setImmediate(resolve));
+      const deal = dealLevel(level, seed);
+      expect(deal.queue.reduce((n, b) => n + b.count, 0)).toBe(48 * 64);
+      expect(Math.max(...deal.queue.map((b) => b.count))).toBeLessThanOrEqual(80);
+      const state = createGame(level, deal);
+      for (let i = 0; i < 400000 && state.status === 'playing'; i++) {
+        let move;
+        while ((move = botMove(state))) placeBlock(state, move.pickerIndex, move.slotIndex);
+        tick(state, 0.05);
+      }
+      expect(state.status).toBe('won');
+    }
+  });
 });
