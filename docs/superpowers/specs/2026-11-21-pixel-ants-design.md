@@ -6,7 +6,7 @@ A puzzle game for a 6-year-old, played offline on an iPad. Ants carry a pixel pi
 
 - Buildable in about 10 hours.
 - Static PWA: no backend. Installs to the iPad home screen and plays fully offline.
-- Touch-first, iPad portrait. Must also work with a mouse for development.
+- Touch-first, iPad portrait. The layout scales from the canvas size, so it must also be playable on a phone in portrait and with a mouse for development.
 
 ## Stack
 
@@ -19,7 +19,7 @@ A puzzle game for a 6-year-old, played offline on an iPad. Ants carry a pixel pi
 
 1. **Home:** the pictures shown as level buttons. Completed levels are marked (stored in `localStorage`).
 2. **Play:** top to bottom: the picture, a row of slots, the picker. A home button in a corner.
-3. **Win overlay:** shown when the picture is empty. Buttons: next picture, home.
+3. **Win overlay:** shown when the picture is empty and the last ant is home. A big "YOU WIN!" filling most of the screen, with confetti in the picture's colours and the ants doing a lap. Buttons: next picture, home.
 4. **Stuck overlay:** "The ants are stuck!" with a "Try again" button that restarts the level.
 
 ## Level data
