@@ -14,7 +14,11 @@ The second game in Riley's Miami Mayhem: a 3D crowd runner. A crowd runs down a 
 - **Losing:** the run ends when nobody is left (obstacles or a minus gate). "Try again" restarts the same level; a level's track is always the same.
 - **Finishing:** crossing the finish line with anyone left completes the level and unlocks the next.
   - 12 or fewer: a small cheer, and a hint to bring more next time.
-  - More than 12: the **high striker** finale. The crowd piles onto a big button and jumps; a puck shoots up a tower to a height set by the crowd size (60 or more rings the bell) while the score counts up to 10 points per runner.
+  - More than 12: one of three finales, picked at random when the level starts (so its stage is in view on the run up). Each scores 10 points per runner, counts the score up while it plays, takes 5 to 9 seconds, and has a reward for 60 or more:
+    - **High striker:** the crowd piles onto a big button and jumps; a puck shoots up a tower to a height set by the crowd size (60 or more rings the bell).
+    - **Human tower:** the crowd stacks itself layer by layer into a tower of people, 7 layers for 13 runners up to 22 for 60; with 60 or more the person on top grabs the star in the clouds.
+    - **Cannon:** the crowd hops into a cannon, which fires them down a runway marked every 10 m; the distance grows with the crowd size, and 60 or more reach the bullseye 60 m away.
+  - `?finale=striker|tower|cannon` forces a finale, for testing.
 - **Drawing limit:** at most 150 runners are drawn. Any beyond that are still counted and step in as drawn runners are lost.
 
 ## Code
@@ -24,7 +28,7 @@ Under `src/games/stampede/`:
 | File | Purpose |
 |---|---|
 | `track.js` | Pure. Level generation, gate maths, obstacle hit tests. |
-| `sim.js` | Pure. The run: crowd formation, steering, gates, obstacles, finish, finale timing. |
+| `sim.js` | Pure. The run: crowd formation, steering, gates, obstacles, finish, the finale choice and each finale's timing. |
 | `view3d.js` | three.js scene and camera. Reads the run; no rules. Loaded only when the game is opened. |
 | `index.js` | Menu, HUD and overlays on the shared 2D canvas, input, saved progress (`stampede-progress`). |
 
@@ -32,4 +36,4 @@ Under `src/games/stampede/`:
 
 ## Not built yet
 
-More finales (human tower, cannon) chosen at random; sound.
+Sound.

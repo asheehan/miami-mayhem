@@ -1,7 +1,7 @@
 // Boardwalk Stampede as a launcher game: menu, run, overlays and saved progress.
 // The 3D view (and three.js) is loaded only when the game is opened.
 import { generateTrack } from './track.js';
-import { createRun, step, steer, count, strikerState, FINALE_MIN } from './sim.js';
+import { createRun, step, steer, count, finaleState, FINALE_MIN } from './sim.js';
 
 const SAVE_KEY = 'stampede-progress';
 const C = { pink: '#ff3d9a', sun: '#ffe14d', foam: '#9ff7f2', ink: '#160b33', white: '#ffffff', blue: '#1496ff', red: '#ff2d46' };
@@ -22,6 +22,13 @@ function save(progress) {
     // not kept if storage is unavailable
   }
 }
+
+// What each finale says before the score starts counting, and when the crowd reaches the top.
+const FINALE_WORDS = {
+  striker: { start: 'Everybody jump!', shout: 'DING! DING!' },
+  tower: { start: 'Build a tower!', shout: 'YOU GOT THE STAR!' },
+  cannon: { start: 'Into the cannon!', shout: 'BULLSEYE!' },
+};
 
 const font = (px, weight = 900) => `${weight} ${Math.round(px)}px ui-rounded, "SF Pro Rounded", system-ui, sans-serif`;
 
@@ -139,9 +146,11 @@ function create(host) {
   let recorded = false;
   let closed = false;
 
-  // ?level=N starts from that level, for testing.
-  const forced = Number(new URLSearchParams(location.search).get('level'));
+  // ?level=N starts from that level, and ?finale=striker|tower|cannon forces a finale, for testing.
+  const params = new URLSearchParams(location.search);
+  const forced = Number(params.get('level'));
   if (Number.isInteger(forced) && forced > 0) progress.level = forced;
+  const forcedFinale = params.get('finale') || undefined;
 
   function layoutButtons() {
     const { w, h } = size;
@@ -168,7 +177,7 @@ function create(host) {
   function ended() {
     if (!run) return false;
     if (run.status === 'finished') return run.endTime > 1.6;
-    if (run.status === 'finale') return strikerState(run).done;
+    if (run.status === 'finale') return finaleState(run).done;
     return false;
   }
 
@@ -188,8 +197,8 @@ function create(host) {
     if (closed) return;
     dropView();
     const track = generateTrack(progress.level);
-    run = createRun(track);
-    view = viewModule.createView(track);
+    run = createRun(track, 1, { finale: forcedFinale });
+    view = viewModule.createView(track, run.finaleKind);
     host.canvas.before(view.el);
     view.resize(size.w, size.h);
     screen = 'play';
@@ -304,21 +313,43 @@ function create(host) {
       outlined(ctx, `${run.finalCount} ${run.finalCount === 1 ? 'runner' : 'runners'}`, w / 2, h * 0.2 + px * 1.7, px, C.white);
       if (ended()) outlined(ctx, `Bring more than ${FINALE_MIN} for the big finish`, w / 2, h * 0.2 + px * 3, px * 0.5, C.foam);
     } else if (run.status === 'finale') {
-      const s = strikerState(run);
-      if (run.endTime > 2) {
+      const s = finaleState(run);
+      const words = FINALE_WORDS[run.finaleKind];
+      if (s.counting) {
         const pop = 1 + (s.score < s.total ? Math.sin(time * 40) * 0.04 : 0);
         outlined(ctx, String(s.score), w / 2, h * 0.16, px * 2.4 * pop, C.sun);
         outlined(ctx, 'POINTS', w / 2, h * 0.16 + px * 1.9, px * 0.7, C.white);
       } else {
-        outlined(ctx, 'Everybody jump!', w / 2, h * 0.16, px * 1.1, C.sun);
+        outlined(ctx, words.start, w / 2, h * 0.16, px * 1.1, C.sun);
       }
-      if (s.bell) outlined(ctx, 'DING! DING!', w / 2, h * 0.34, px * 1.2 * (1 + Math.sin(time * 18) * 0.08), C.pink);
+      if (s.celebrate) {
+        // shrink a long shout to fit a narrow screen
+        ctx.font = font(px * 1.2);
+        const fit = Math.min(1, (w * 0.86) / ctx.measureText(words.shout).width);
+        outlined(ctx, words.shout, w / 2, h * 0.34, px * 1.2 * fit * (1 + Math.sin(time * 18) * 0.08), C.pink);
+      }
     }
     for (const b of buttons) drawButton(ctx, b, b.id === 'menu' ? C.white : C.sun);
   }
 
-  // Test hook for automated browser checks.
-  if (new URLSearchParams(location.search).has('debug')) window.__stampede = { run: () => run, buttons: () => buttons };
+  // Test hook for automated browser checks. finish(n) jumps the current run to just before
+  // the finish line with n runners, to reach a finale quickly.
+  if (params.has('debug')) {
+    window.__stampede = {
+      run: () => run,
+      buttons: () => buttons,
+      finish(n) {
+        if (!run || run.status !== 'running') return false;
+        const next = createRun(run.track, n, { finale: run.finaleKind });
+        next.z = run.track.finishZ - 3;
+        next.time = run.time;
+        next.gateIndex = run.track.gates.length;
+        next.taken = run.taken.slice();
+        run = next;
+        return true;
+      },
+    };
+  }
 
   return {
     resize(w, h) {
