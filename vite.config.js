@@ -2,7 +2,7 @@ import { defineConfig } from 'vite';
 import { VitePWA } from 'vite-plugin-pwa';
 
 export default defineConfig({
-  base: '/pixel-ants/',
+  base: '/miami-mayhem/',
   plugins: [
     VitePWA({
       registerType: 'autoUpdate',
