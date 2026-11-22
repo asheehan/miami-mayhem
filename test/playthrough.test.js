@@ -6,10 +6,13 @@ import { HARD } from '../src/games/pixel-ants/constants.js';
 
 describe('bot playthrough', { timeout: 120_000 }, () => {
   // Robot is deliberately very hard for the simple bot, so it is left out.
-  for (const level of levels.filter((l) => l.name !== 'Robot')) {
-    it(`${level.name}: the bot wins seeds 1-20 in the real game loop`, async () => {
+  // The first two pages are played on 20 seeds each, the later pages on 8 to keep the run short.
+  for (const [index, level] of levels.entries()) {
+    if (level.name === 'Robot') continue;
+    const seeds = index < 8 ? 20 : 8;
+    it(`${level.name}: the bot wins seeds 1-${seeds} in the real game loop`, async () => {
       const failures = [];
-      for (let seed = 1; seed <= 20; seed++) {
+      for (let seed = 1; seed <= seeds; seed++) {
         // Yield between seeds so the test worker can answer the runner on slow machines.
         await new Promise((resolve) => setImmediate(resolve));
         const deal = dealLevel(level, seed);

@@ -39,7 +39,7 @@ Completed pictures are remembered separately for each difficulty. While a level 
 
 ## Level data
 
-A level is `{ name, palette: { char: hex }, rows: string[] }`. Every picture is 24 wide by 32 tall (768 pixels), every cell filled, 13–16 colours. Eight pictures ship, four to a home-screen page. Page 1: Rocket, Dino, Reef, Rainbow. Page 2 (harder): Pirate Ship, Digger, Castle, Robot. Level settings with defaults: `slots: 3`, `pickerSize: 9`.
+A level is `{ name, palette: { char: hex }, rows: string[] }`. Every picture is 24 wide by 32 tall (768 pixels), every cell filled, 12–16 colours, no two the same in one picture. Twenty pictures ship, four to a home-screen page. Page 1: Rocket, Dino, Reef, Rainbow. Page 2 (harder): Pirate Ship, Digger, Castle, Robot. Page 3: Shark, Monster Truck, Flamingo, Ice Cream. Page 4: Dragon, Fire Truck, Sea Turtle, Train. Page 5: UFO, Volcano, Race Car, Lighthouse. A colour should not appear both near the bottom and deep in a picture in separate large bands: a block can then be left half used in a slot. Level settings with defaults: `slots: 3`, `pickerSize: 9`.
 
 ## Rules
 
