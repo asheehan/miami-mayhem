@@ -10,7 +10,7 @@ A game in Riley's Miami Mayhem: the player is the wind. There is no character. S
 - **The scene reacts to every gust:** palm crowns lean and spring back, umbrellas wobble, towels flap, mangroves rustle, wind streaks, sand and leaves fly along the cone and a curved swoosh sweeps out. A strong gust knocks an umbrella over for 3 s.
 - **Sail home:** blow the boat into the glowing dock slip. Mangrove islands, sand banks and pier posts are solid. Later: rocks bounce the boat back with a kick, a narrow channel, a current that carries the boat sideways, and a slip that only catches a boat coming in gently.
 - **Herd:** blow every beach ball (or rubber duck) into the pool or pond. The rim holds slow things in; on later levels a hard enough push carries a ball back out. Balls bump each other. Wins once all are in and nearly still.
-- **Shoo:** gulls walk (later also fly) in from the edges toward the picnic blanket. A gust strong enough scares a gull off for good; a tiny puff only nudges it. A gull that reaches the blanket steals a snack and flies off. Keep at least one snack until the clock (a bar along the bottom) fills. On the last picnic, a huge gust over the blanket blows a snack away, so small puffs win.
+- **Shoo:** a big "DEFEND!" shows for the first 2 s. Gulls walk (later also fly) in from the edges toward the picnic blanket. A gust strong enough scares a gull off for good; a tiny puff only nudges it. A gull that reaches the blanket steals a snack and flies off. Keep at least one snack until the clock (a bar along the bottom) fills. On the last picnic, a huge gust over the blanket blows a snack away, so small puffs win.
 - **No fail on levels 1–3.** On the first picnic, losing every snack refills the basket and starts the clock over. Later picnics end in a friendly "Oh no!" with Try again when the last snack goes. Sail and herd levels never fail.
 - **Stars:** sail and herd: 1 for finishing, +1 for picking up every shell on the way (anything blown over a shell picks it up), +1 for beating the level's par time (a ring around a star in the bottom strip runs down). Shoo: 3 for keeping every snack, 2 for keeping half, otherwise 1 (and 1 after a refill).
 - **Hints:** at the start, and again after 7 s without a gust, a dashed arrow shows where the loose thing should go next (around obstacles). On levels 1–3 a ghost finger shows the swipe. On picnics the finger shows a swipe from the blanket out toward the nearest gull.
@@ -23,13 +23,13 @@ A game in Riley's Miami Mayhem: the player is the wind. There is no character. S
 |---|---|---|---|
 | 1 | First Sail | sail | open water, wide slip |
 | 2 | Beach Balls | herd | 2 balls, big pool that never lets go |
-| 3 | Picnic Time | shoo | slow walking gulls from two sides, 25 s |
+| 3 | Picnic Time | shoo | 9 walking gulls from two sides, 25 s |
 | 4 | Mangrove Maze | sail | islands to steer around, gentle docking |
 | 5 | Pool Party | herd | 3 balls, chairs, palms and an umbrella in the way, rim lets go of hard hits |
-| 6 | Gull Gang | shoo | gulls from all sides, some flying, 30 s, can fail |
+| 6 | Gull Gang | shoo | 15 gulls from all sides, some flying, 30 s, can fail |
 | 7 | Rocky Channel | sail | narrow channel, bouncing rocks, a current, careful docking |
 | 8 | Duck Pond | herd | 4 ducks, a fence to go around, small pond that lets go easily |
-| 9 | Big Picnic | shoo | 16 gulls, many flying, 40 s, big gusts blow snacks away |
+| 9 | Big Picnic | shoo | 22 gulls, many flying, 40 s, big gusts blow snacks away |
 
 ## Code
 

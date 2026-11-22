@@ -11,6 +11,7 @@ import {
 const SAVE_KEY = 'hurricane-riley-progress';
 const WIN_BUTTON_DELAY = 1.2; // seconds after a win before Next shows, so a last swipe can't press it
 const FAIL_BUTTON_DELAY = 1.0;
+const DEFEND_SHOW = 2; // seconds the "DEFEND!" banner stays up at the start of a picnic level
 const HINT_IDLE = 7; // seconds without a gust before the hint comes back
 const TRAIL_KEEP = 0.35; // seconds a finger trail stays on screen
 
@@ -496,6 +497,16 @@ function create(host) {
       }
     }
     drawHud(ctx);
+    if (game.job === 'shoo' && game.status === 'play' && game.time < DEFEND_SHOW) {
+      // a big call to action as a picnic level starts
+      const t = game.time;
+      const px = Math.min(size.h * 0.09, size.w / 5);
+      const pop = 1 + Math.max(0, 0.3 - t) * 2 + Math.sin(time * 8) * 0.03;
+      ctx.save();
+      ctx.globalAlpha = Math.min(1, (DEFEND_SHOW - t) / 0.4);
+      outlined(ctx, 'DEFEND!', size.w / 2, view.oy + FIELD_H * view.s * 0.24, px * pop, C.sun, size.w * 0.92);
+      ctx.restore();
+    }
     if (game.status === 'won') drawWin(ctx);
     else if (game.status === 'fail') drawFail(ctx);
     for (const b of buttons) b.icon ? drawIconButton(ctx, b) : drawButton(ctx, b, b.fill);

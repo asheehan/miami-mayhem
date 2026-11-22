@@ -59,8 +59,8 @@ export const LEVELS = [
     job: 'shoo',
     noFail: true,
     shoo: {
-      picnic: { x: 200, y: 330, r: 52 }, snacks: 4, duration: 25, gulls: 6, firstAt: 2, quietEnd: 5,
-      walkSpeed: 26, flySpeed: 60, flyers: 0, sides: ['left', 'right'],
+      picnic: { x: 200, y: 330, r: 52 }, snacks: 4, duration: 25, gulls: 9, firstAt: 1.5, quietEnd: 4,
+      walkSpeed: 33, flySpeed: 60, flyers: 0, sides: ['left', 'right'],
     },
     movers: [],
     walls: [],
@@ -116,8 +116,8 @@ export const LEVELS = [
     name: 'Gull Gang',
     job: 'shoo',
     shoo: {
-      picnic: { x: 200, y: 330, r: 52 }, snacks: 4, duration: 30, gulls: 11, firstAt: 1.5, quietEnd: 5,
-      walkSpeed: 32, flySpeed: 62, flyers: 0.3, sides: ['left', 'right', 'top', 'bottom'],
+      picnic: { x: 200, y: 330, r: 52 }, snacks: 4, duration: 30, gulls: 15, firstAt: 1.2, quietEnd: 4,
+      walkSpeed: 39, flySpeed: 74, flyers: 0.3, sides: ['left', 'right', 'top', 'bottom'],
     },
     movers: [],
     walls: [],
@@ -178,8 +178,8 @@ export const LEVELS = [
     name: 'Big Picnic',
     job: 'shoo',
     shoo: {
-      picnic: { x: 200, y: 320, r: 56 }, snacks: 5, duration: 40, gulls: 16, firstAt: 1, quietEnd: 5,
-      walkSpeed: 36, flySpeed: 70, flyers: 0.45, sides: ['left', 'right', 'top', 'bottom'], windySnacks: true,
+      picnic: { x: 200, y: 320, r: 56 }, snacks: 5, duration: 40, gulls: 22, firstAt: 1, quietEnd: 4,
+      walkSpeed: 44, flySpeed: 84, flyers: 0.45, sides: ['left', 'right', 'top', 'bottom'], windySnacks: true,
     },
     movers: [],
     walls: [],
