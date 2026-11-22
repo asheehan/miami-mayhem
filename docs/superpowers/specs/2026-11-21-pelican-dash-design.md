@@ -11,9 +11,9 @@ A game in Riley's Miami Mayhem: a side-scrolling tap-to-flap game. A chunky peli
   - Below, rising from the water: twin pilings, a pier section, or a lifeguard hut on stilts.
   - Above, hanging into the sky: a stack of beach signs, a string of kites, or a tethered blimp.
   - The hit shapes match what is drawn. The pelican's own hit circle (radius 4.2) is smaller than its picture.
-- **Difficulty** grows with distance over the first 2400 units (about two and a half minutes), then stays put:
-  - scroll speed 12 → 20 units/s
-  - gap 56 → 34 units
+- **Difficulty** grows with distance over the first 900 units (about 50 seconds), then stays put:
+  - scroll speed 12 → 23 units/s
+  - gap 56 → 31 units
   - spacing between obstacles 52 → 40 units
   - the gap's height changes by at most 16 → 26 units from one obstacle to the next, and never by more than is easy in the clear air between them (a fall from a hover, or a climb at 20 units/s).
   - Gaps stay between y = 14 and y = 86.

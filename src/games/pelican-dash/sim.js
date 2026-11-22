@@ -16,11 +16,11 @@ export const NEST_EVERY = 10;
 export const FIRST_X = 80; // where the first obstacle stands
 export const AHEAD = 260; // the world is generated this far ahead of the pelican
 export const NEST_AHEAD = 150; // a nest replaces the first obstacle at least this far ahead
-export const RAMP = 2400; // distance over which speed, gaps and spacing reach their limits
+export const RAMP = 900; // distance over which speed, gaps and spacing reach their limits
 
 // [start, limit] for each difficulty setting.
-export const SPEED = [12, 20];
-export const GAP = [56, 34];
+export const SPEED = [12, 23];
+export const GAP = [56, 31];
 export const SPACING = [52, 40];
 export const SHIFT = [16, 26]; // largest change in gap height from one obstacle to the next
 export const GAP_TOP_MIN = 14; // the hanging thing always shows at least this much
