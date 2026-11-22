@@ -40,7 +40,7 @@ export function launcherButtons(width, height, games) {
   const count = games.length + (games.length % cols ? 1 : 0);
   const rows = Math.ceil(count / cols);
   const edge = Math.max(16, height * 0.03);
-  const top = height * 0.36;
+  const top = height * (rows > 2 ? 0.32 : 0.36);
   const bottom = height - edge;
   const gap = Math.max(16, width * (cols > 2 ? 0.04 : 0.05));
   const labelH = Math.max(32, height * 0.045);
