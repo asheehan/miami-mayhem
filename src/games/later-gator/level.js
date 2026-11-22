@@ -46,9 +46,9 @@ export function levelParams(n) {
   const t = Math.min(1, (Math.max(1, n) - 1) / 7);
   const extra = Math.max(0, n - 8);
   return {
-    lanes: Math.min(40, Math.round(15 + 10 * t + extra * 0.6)),
-    speed: (1 + 0.55 * t) * Math.min(1.4, 1 + 0.03 * extra), // multiplies every mover's speed
-    gap: Math.max(0.5, 1 - 0.32 * t - 0.02 * extra), // multiplies the space between movers
+    lanes: Math.min(45, Math.round(18 + 12 * t + extra * 0.8)),
+    speed: (1 + 0.65 * t) * Math.min(1.5, 1 + 0.04 * extra), // multiplies every mover's speed
+    gap: Math.max(0.5, 1 - 0.34 * t - 0.02 * extra), // multiplies the space between movers
     maxRun: t < 0.4 ? 3 : 4, // most hazard lanes in a row before a safe strip
     blockers: t < 0.4 ? [1, 2] : [2, 3],
   };

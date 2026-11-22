@@ -29,12 +29,12 @@ describe('generateLevel', () => {
     expect(generateLevel(2)).not.toEqual(generateLevel(3));
   });
 
-  it('grows from about 15 lanes at level 1 to about 25 at level 8, then keeps growing gently', () => {
+  it('grows from about 18 lanes at level 1 to about 30 at level 8, then keeps growing gently', () => {
     const lanes = (n) => generateLevel(n).rows.length - 2;
-    expect(lanes(1)).toBeGreaterThanOrEqual(13);
-    expect(lanes(1)).toBeLessThanOrEqual(17);
-    expect(lanes(8)).toBeGreaterThanOrEqual(23);
-    expect(lanes(8)).toBeLessThanOrEqual(27);
+    expect(lanes(1)).toBeGreaterThanOrEqual(16);
+    expect(lanes(1)).toBeLessThanOrEqual(20);
+    expect(lanes(8)).toBeGreaterThanOrEqual(28);
+    expect(lanes(8)).toBeLessThanOrEqual(32);
     expect(lanes(20)).toBeGreaterThan(lanes(8));
     expect(levelParams(8).speed).toBeGreaterThan(levelParams(1).speed);
     expect(levelParams(8).gap).toBeLessThan(levelParams(1).gap);
