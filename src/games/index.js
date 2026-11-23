@@ -10,6 +10,7 @@ import { bigCatch } from './big-catch/index.js';
 import { postcardPuzzles } from './postcard-puzzles/index.js';
 import { cargoCaptain } from './cargo-captain/index.js';
 import { sunsetDrive } from './sunset-drive/index.js';
+import { rooftopRunaway } from './rooftop-runaway/index.js';
 
 // Every game the launcher offers, in tile order. To add a game, give it its own folder
 // here exporting { id, title, drawTile(ctx, x, y, w, h, time), create(host) }, where
@@ -20,4 +21,5 @@ export const games = [pixelAnts, stampede, pelicanDash, flamingoGolf, laterGator
   hurricaneRiley, bridgeBoss,
   turtleTide, bigCatch,
   postcardPuzzles, cargoCaptain, sunsetDrive,
+  rooftopRunaway,
 ];
