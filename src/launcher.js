@@ -35,15 +35,25 @@ function roundRect(ctx, x, y, w, h, r) {
 // Pure. One tile per game in a grid under the title (two columns, three once there are
 // more than four games), plus a "more soon" tile when that leaves a gap. Each rect covers
 // the picture and its name label.
-export function launcherButtons(width, height, games) {
-  const cols = games.length > 4 ? 3 : 2;
-  const count = games.length + (games.length % cols ? 1 : 0);
+// More than PAGE_SIZE games are split into pages: every page uses the full 3 x 3 layout,
+// with a row of arrows and dots underneath ('prev', 'next' and 'dots' rects).
+export const PAGE_SIZE = 9;
+export const pageCount = (games) => Math.max(1, Math.ceil(games.length / PAGE_SIZE));
+
+export function launcherButtons(width, height, allGames, page = 0) {
+  const paged = allGames.length > PAGE_SIZE;
+  const pages = pageCount(allGames);
+  const first = paged ? Math.min(Math.max(0, page), pages - 1) * PAGE_SIZE : 0;
+  const games = paged ? allGames.slice(first, first + PAGE_SIZE) : allGames;
+  const cols = allGames.length > 4 ? 3 : 2;
+  const count = paged ? PAGE_SIZE : games.length + (games.length % cols ? 1 : 0);
   const rows = Math.ceil(count / cols);
-  const edge = Math.max(16, height * 0.03);
-  const top = height * (rows > 2 ? 0.32 : 0.36);
-  const bottom = height - edge;
+  const edge = paged ? Math.max(12, height * 0.02) : Math.max(16, height * 0.03);
+  const navH = paged ? Math.max(40, height * 0.045) : 0;
+  const top = height * (paged ? 0.3 : rows > 2 ? 0.32 : 0.36);
+  const bottom = height - edge - navH - (paged ? 10 : 0); // clear of the cards' borders
   const gap = Math.max(16, width * (cols > 2 ? 0.04 : 0.05));
-  const labelH = Math.max(32, height * 0.045);
+  const labelH = paged ? Math.max(30, height * 0.04) : Math.max(32, height * 0.045);
   const maxW = (width - gap * (cols + 1)) / cols;
   const maxH = (bottom - top - gap * (rows - 1)) / rows;
   const w = Math.min(maxW, ((maxH - labelH) * 3) / 4, 300);
@@ -57,8 +67,18 @@ export function launcherButtons(width, height, games) {
     h,
     labelH,
   });
-  const buttons = games.map((game, i) => ({ id: 'game', index: i, ...rect(i) }));
+  const buttons = games.map((game, i) => ({ id: 'game', index: first + i, ...rect(i) }));
   if (count > games.length) buttons.push({ id: 'soon', ...rect(games.length) });
+  if (paged) {
+    const cur = first / PAGE_SIZE;
+    const ny = height - edge * 0.6 - navH;
+    const aw = navH * 1.6;
+    const dotsW = Math.max(navH * 1.2, pages * navH * 0.6);
+    const nx = (width - dotsW) / 2;
+    buttons.push({ id: 'dots', x: nx, y: ny, w: dotsW, h: navH, page: cur, pages });
+    if (cur > 0) buttons.push({ id: 'prev', x: nx - aw - 12, y: ny, w: aw, h: navH });
+    if (cur < pages - 1) buttons.push({ id: 'next', x: nx + dotsW + 12, y: ny, w: aw, h: navH });
+  }
   return buttons;
 }
 
@@ -177,6 +197,35 @@ export function drawLauncher(ctx, width, height, view) {
   drawTitle(ctx, width, height, time);
 
   for (const b of view.buttons) {
+    if (b.id === 'dots') {
+      for (let i = 0; i < b.pages; i++) {
+        ctx.fillStyle = i === b.page ? C.white : 'rgba(255,255,255,0.4)';
+        ctx.beginPath();
+        ctx.arc(b.x + ((i + 0.5) / b.pages) * b.w, b.y + b.h / 2, b.h * (i === b.page ? 0.2 : 0.14), 0, Math.PI * 2);
+        ctx.fill();
+      }
+      continue;
+    }
+    if (b.id === 'prev' || b.id === 'next') {
+      const nudge = Math.sin(time * 4) * 3 * (b.id === 'next' ? 1 : -1);
+      ctx.fillStyle = '#ffe14d';
+      roundRect(ctx, b.x + nudge, b.y, b.w, b.h, b.h * 0.4);
+      ctx.fill();
+      ctx.lineWidth = 3;
+      ctx.strokeStyle = C.palm;
+      ctx.stroke();
+      const cx = b.x + nudge + b.w / 2;
+      const cy = b.y + b.h / 2;
+      const r = b.h * 0.26 * (b.id === 'next' ? 1 : -1);
+      ctx.fillStyle = C.palm;
+      ctx.beginPath();
+      ctx.moveTo(cx + r, cy);
+      ctx.lineTo(cx - r * 0.8, cy - Math.abs(r));
+      ctx.lineTo(cx - r * 0.8, cy + Math.abs(r));
+      ctx.closePath();
+      ctx.fill();
+      continue;
+    }
     const picH = b.h - b.labelH;
     const pad = Math.max(6, b.w * 0.035);
     const bob = Math.sin(time * 2 + b.x * 0.01) * 3;

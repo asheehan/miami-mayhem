@@ -2,7 +2,7 @@
 // and hands everything to whichever game is open.
 import { attachInput } from './input.js';
 import { games } from './games/index.js';
-import { drawLauncher, launcherButtons } from './launcher.js';
+import { drawLauncher, launcherButtons, pageCount } from './launcher.js';
 
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
@@ -10,6 +10,8 @@ const ctx = canvas.getContext('2d');
 let size = { w: 0, h: 0 };
 let active = null; // the open game, or null while the launcher is showing
 const launcher = { games, buttons: [], time: 0 };
+let page = 0; // which page of the launcher is showing
+let swipe = null; // where a touch on the launcher began
 
 function resize() {
   const dpr = window.devicePixelRatio || 1;
@@ -17,7 +19,7 @@ function resize() {
   canvas.width = Math.round(size.w * dpr);
   canvas.height = Math.round(size.h * dpr);
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  launcher.buttons = launcherButtons(size.w, size.h, games);
+  launcher.buttons = launcherButtons(size.w, size.h, games, page);
   if (active) active.resize(size.w, size.h);
 }
 
@@ -31,18 +33,48 @@ function open(game) {
   active.resize(size.w, size.h);
 }
 
+function turnPage(by) {
+  const next = Math.min(pageCount(games) - 1, Math.max(0, page + by));
+  if (next === page) return;
+  page = next;
+  launcher.buttons = launcherButtons(size.w, size.h, games, page);
+}
+
+// A touch on the launcher: a sideways swipe turns the page, anything else is a tap.
+function launcherTouch(x0, y0, x, y) {
+  const dx = x - x0;
+  if (Math.abs(dx) > Math.max(40, size.w * 0.1) && Math.abs(dx) > Math.abs(y - y0) * 1.5) {
+    turnPage(dx < 0 ? 1 : -1);
+    return;
+  }
+  const pad = 10; // the arrows are small, so they take near misses too
+  const b = launcher.buttons.find((r) => {
+    const p = r.id === 'prev' || r.id === 'next' ? pad : 0;
+    return x >= r.x - p && x <= r.x + r.w + p && y >= r.y - p && y <= r.y + r.h + p;
+  });
+  if (!b) return;
+  if (b.id === 'game') open(games[b.index]);
+  else if (b.id === 'prev') turnPage(-1);
+  else if (b.id === 'next') turnPage(1);
+}
+
 attachInput(canvas, {
-  onPickUp: (x, y) => (active ? active.onPickUp(x, y) : false),
+  onPickUp(x, y) {
+    if (active) return active.onPickUp(x, y);
+    swipe = { x, y };
+    return true;
+  },
   onDrag: (x, y) => active?.onDrag(x, y),
-  onDrop: (x, y) => active?.onDrop(x, y),
-  onTap(x, y) {
-    if (active) {
-      active.onTap(x, y);
+  onDrop(x, y) {
+    if (swipe) {
+      const s = swipe;
+      swipe = null;
+      if (!active) launcherTouch(s.x, s.y, x, y);
       return;
     }
-    const b = launcher.buttons.find((r) => x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h);
-    if (b && b.id === 'game') open(games[b.index]);
+    active?.onDrop(x, y);
   },
+  onTap: (x, y) => active?.onTap(x, y),
 });
 
 window.addEventListener('resize', resize);
