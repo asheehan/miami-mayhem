@@ -5,6 +5,8 @@ import { flamingoGolf } from './flamingo-golf/index.js';
 import { laterGator } from './later-gator/index.js';
 import { hurricaneRiley } from './hurricane-riley/index.js';
 import { bridgeBoss } from './bridge-boss/index.js';
+import { turtleTide } from './turtle-tide/index.js';
+import { bigCatch } from './big-catch/index.js';
 
 // Every game the launcher offers, in tile order. To add a game, give it its own folder
 // here exporting { id, title, drawTile(ctx, x, y, w, h, time), create(host) }, where
@@ -13,4 +15,5 @@ import { bridgeBoss } from './bridge-boss/index.js';
 // may put its own canvas behind it and draw only its buttons and text on top).
 export const games = [pixelAnts, stampede, pelicanDash, flamingoGolf, laterGator,
   hurricaneRiley, bridgeBoss,
+  turtleTide, bigCatch,
 ];
