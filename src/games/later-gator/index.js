@@ -4,6 +4,8 @@ import { generateLevel, isSafe } from './level.js';
 import { createRun, step, hop, progress as runProgress, WIN_TIME, HEARTS } from './sim.js';
 
 const SAVE_KEY = 'later-gator-progress';
+const PICK_COLS = 3; // the level picker shows this many tiles across
+const PICK_ROWS = 4; // and this many down, per page
 const C = { pink: '#ff3d9a', sun: '#ffe14d', foam: '#9ff7f2', ink: '#160b33', white: '#ffffff', green: '#3fae4a', dark: '#2a7f37', belly: '#c8f08a', red: '#ff2d46', sea: '#0bb5c4' };
 
 export function loadProgress(storage = globalThis.localStorage) {
@@ -251,7 +253,8 @@ export const laterGator = {
 function create(host) {
   let size = { w: 1, h: 1 };
   let progress = loadProgress();
-  let screen = 'menu'; // 'menu' | 'play'
+  let screen = 'menu'; // 'menu' | 'levels' | 'play'
+  let page = 0; // which page of the level picker is showing
   let levelNum = progress.level;
   let run = null;
   let view = null;
@@ -280,7 +283,31 @@ function create(host) {
     const s = hudSize();
     const corner = { x: 12, y: 12, w: s, h: s };
     if (screen === 'menu') {
-      buttons = [{ id: 'exit', ...corner }, { id: 'play', label: `Play level ${progress.level}`, x, y: h * 0.8, w: bw, h: bh }];
+      const lh = bh * 0.8;
+      buttons = [
+        { id: 'exit', ...corner },
+        { id: 'play', label: `Play level ${progress.level}`, x, y: h * 0.78, w: bw, h: bh },
+        { id: 'levels', label: 'Levels', x: x + bw * 0.15, y: h * 0.78 + bh * 1.15, w: bw * 0.7, h: lh },
+      ];
+    } else if (screen === 'levels') {
+      // a page of PICK_COLS x PICK_ROWS level tiles, with arrows to turn the page
+      const top = h * 0.2;
+      const arrowH = Math.max(56, Math.min(84, h * 0.075));
+      const bottom = h - arrowH - 36;
+      const gap = Math.max(10, w * 0.025);
+      const tile = Math.min((Math.min(w, 620) - gap * (PICK_COLS + 1)) / PICK_COLS, (bottom - top - gap * (PICK_ROWS - 1)) / PICK_ROWS);
+      const gx = (w - (tile * PICK_COLS + gap * (PICK_COLS - 1))) / 2;
+      buttons = [{ id: 'back', ...corner }];
+      for (let i = 0; i < PICK_COLS * PICK_ROWS; i++) {
+        const n = page * PICK_COLS * PICK_ROWS + i + 1;
+        buttons.push({
+          id: n <= progress.level ? 'pick' : 'locked', n,
+          x: gx + (i % PICK_COLS) * (tile + gap), y: top + Math.floor(i / PICK_COLS) * (tile + gap), w: tile, h: tile,
+        });
+      }
+      const ay = h - arrowH - 18;
+      if (page > 0) buttons.push({ id: 'prev', label: '◀', x: gx, y: ay, w: arrowH * 1.5, h: arrowH });
+      if (page < pages() - 1) buttons.push({ id: 'next-page', label: '▶', x: w - gx - arrowH * 1.5, y: ay, w: arrowH * 1.5, h: arrowH });
     } else if (run && run.status === 'lost') {
       buttons = [
         { id: 'retry', label: 'Try again', x, y: h * 0.56, w: bw, h: bh },
@@ -341,9 +368,11 @@ function create(host) {
     saveProgress(progress);
   }
 
+  const pages = () => Math.max(1, Math.ceil(progress.level / (PICK_COLS * PICK_ROWS)));
+
   const totalStars = () => Object.values(progress.stars).reduce((s, n) => s + (Number(n) || 0), 0);
 
-  function drawMenu(ctx) {
+  function drawBackdrop(ctx) {
     const { w, h } = size;
     const sky = ctx.createLinearGradient(0, 0, 0, h);
     sky.addColorStop(0, '#2b1055');
@@ -361,6 +390,41 @@ function create(host) {
     ctx.beginPath();
     ctx.arc(w * 0.72, h * 0.62, Math.min(w, h) * 0.16, Math.PI, 0);
     ctx.fill();
+  }
+
+  function drawLevels(ctx) {
+    const { w, h } = size;
+    drawBackdrop(ctx);
+    ctx.fillStyle = 'rgba(22,11,51,0.45)';
+    ctx.fillRect(0, 0, w, h);
+    outlined(ctx, 'Levels', w / 2, h * 0.11, Math.min(h * 0.06, w / 8), C.sun);
+    for (const b of buttons) {
+      if (b.id === 'back') drawHomeIcon(ctx, b, 'rgba(255,255,255,0.22)');
+      else if (b.id === 'pick' || b.id === 'locked') {
+        const open = b.id === 'pick';
+        ctx.fillStyle = open ? (b.n === progress.level ? C.sun : C.foam) : 'rgba(255,255,255,0.18)';
+        roundRect(ctx, b.x, b.y, b.w, b.h, b.w * 0.2);
+        ctx.fill();
+        ctx.lineWidth = 4;
+        ctx.strokeStyle = open ? C.ink : 'rgba(255,255,255,0.35)';
+        ctx.stroke();
+        ctx.fillStyle = open ? C.ink : 'rgba(255,255,255,0.55)';
+        ctx.font = font(b.w * 0.4);
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(String(b.n), b.x + b.w / 2, b.y + b.h * 0.4);
+        if (open) {
+          const got = progress.stars[String(b.n)] || 0;
+          for (let i = 0; i < 3; i++) star(ctx, b.x + b.w / 2 + (i - 1) * b.w * 0.26, b.y + b.h * 0.78, b.w * 0.11, i < got);
+        }
+      } else drawButton(ctx, b);
+    }
+    if (loading) outlined(ctx, 'Getting ready…', w / 2, h * 0.16, Math.min(h * 0.03, w / 16), C.white);
+  }
+
+  function drawMenu(ctx) {
+    const { w, h } = size;
+    drawBackdrop(ctx);
     const px = Math.min(h * 0.08, w / 6.5);
     outlined(ctx, 'LATER,', w / 2, h * 0.15, px, C.foam);
     outlined(ctx, 'GATOR!', w / 2, h * 0.15 + px * 1.15, px * 1.2, C.sun);
@@ -383,9 +447,9 @@ function create(host) {
     drawGator2D(ctx, w * 0.42, h * 0.735, gs, time, hopT);
     for (const b of buttons) {
       if (b.id === 'exit') drawHomeIcon(ctx, b, 'rgba(255,255,255,0.22)');
-      else drawButton(ctx, b);
+      else drawButton(ctx, b, b.id === 'levels' ? C.foam : C.sun);
     }
-    if (loading) outlined(ctx, 'Getting ready…', w / 2, h * 0.92, px * 0.45, C.white);
+    if (loading) outlined(ctx, 'Getting ready…', w / 2, h * 0.47, px * 0.45, C.white);
   }
 
   function drawHud(ctx) {
@@ -514,7 +578,8 @@ function create(host) {
     },
 
     draw(ctx) {
-      if (screen === 'menu' || !run || !view) drawMenu(ctx);
+      if (screen === 'levels') drawLevels(ctx);
+      else if (screen === 'menu' || !run || !view) drawMenu(ctx);
       else drawHud(ctx);
     },
 
@@ -546,6 +611,16 @@ function create(host) {
         dropView();
         host.exit();
       } else if (b.id === 'play') startLevel(progress.level);
+      else if (b.id === 'levels') {
+        screen = 'levels';
+        page = pages() - 1;
+        layoutButtons();
+      } else if (b.id === 'back') toMenu();
+      else if (b.id === 'pick') startLevel(b.n);
+      else if (b.id === 'prev' || b.id === 'next-page') {
+        page += b.id === 'prev' ? -1 : 1;
+        layoutButtons();
+      }
       else if (b.id === 'retry') startLevel(levelNum);
       else if (b.id === 'next') startLevel(levelNum + 1);
       else if (b.id === 'menu' || b.id === 'home') toMenu();
