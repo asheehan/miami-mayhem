@@ -18,6 +18,7 @@ import { dominoDash } from './domino-dash/index.js';
 import { iggyHides } from './iggy-hides/index.js';
 import { coconutShuffle } from './coconut-shuffle/index.js';
 import { memoryBeach } from './memory-beach/index.js';
+import { foodTruck } from './food-truck/index.js';
 import { sockPuppet } from './sock-puppet/index.js';
 
 // Every game the launcher offers, in tile order. To add a game, give it its own folder
@@ -32,6 +33,6 @@ export const games = [pixelAnts, stampede, pelicanDash, flamingoGolf, laterGator
   rooftopRunaway,
   sandcastleSmash, muralMaker, swampBuggy,
   dominoDash, iggyHides,
-  coconutShuffle, memoryBeach,
+  coconutShuffle, memoryBeach, foodTruck,
   sockPuppet,
 ];
