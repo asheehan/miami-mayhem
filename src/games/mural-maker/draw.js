@@ -679,6 +679,54 @@ export function drawTool(ctx, b, on = false) {
   ctx.stroke();
 }
 
+// A big page-turning arrow on the street: a sunny tile with a fat triangle, nudging the way
+// it goes. dir 1 points right, -1 left.
+export function drawArrow(ctx, b, dir, time = 0) {
+  const nudge = Math.sin(time * 4) * 3 * dir;
+  const x = b.x + nudge;
+  const r = b.h * 0.4;
+  ctx.fillStyle = 'rgba(10,4,30,0.35)';
+  roundRect(ctx, x, b.y + 4, b.w, b.h, r);
+  ctx.fill();
+  ctx.fillStyle = C.sun;
+  roundRect(ctx, x, b.y, b.w, b.h, r);
+  ctx.fill();
+  ctx.lineWidth = 3;
+  ctx.strokeStyle = C.ink;
+  ctx.stroke();
+  const cx = x + b.w / 2;
+  const cy = b.y + b.h / 2;
+  const a = b.h * 0.28;
+  ctx.beginPath();
+  ctx.moveTo(cx + a * 1.05 * dir, cy);
+  ctx.lineTo(cx - a * 0.75 * dir, cy - a);
+  ctx.lineTo(cx - a * 0.75 * dir, cy + a);
+  ctx.closePath();
+  ctx.fillStyle = C.pink;
+  ctx.fill();
+  ctx.lineJoin = 'round';
+  ctx.lineWidth = 3;
+  ctx.strokeStyle = C.ink;
+  ctx.stroke();
+}
+
+// Page dots: one per page, the current one big and bright.
+export function drawDots(ctx, b, page, pages, time = 0) {
+  for (let i = 0; i < pages; i++) {
+    const on = i === page;
+    const cx = b.x + ((i + 0.5) / pages) * b.w;
+    const cy = b.y + b.h / 2;
+    const r = b.h * (on ? 0.2 + Math.sin(time * 3) * 0.01 : 0.13);
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0, TAU);
+    ctx.fillStyle = on ? C.sun : 'rgba(255,255,255,0.55)';
+    ctx.fill();
+    ctx.lineWidth = on ? 3 : 2;
+    ctx.strokeStyle = C.ink;
+    ctx.stroke();
+  }
+}
+
 // Icons, drawn inside a box of size s centred on (cx, cy).
 export function glyph(ctx, name, cx, cy, s, opts = {}) {
   const u = s / 100;

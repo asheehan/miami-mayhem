@@ -8,6 +8,7 @@ import {
   dripsFor, simplify, encodeWall, decodeWall, serializeProgress, parseProgress, loadProgress, saveProgress, SAVE_KEY,
   WALL_BUDGET, MAX_POINTS, STAMP_MIN, STAMP_MAX, STAMP_SIZE, HISTORY_MAX, checkSpray, blankRegions,
 } from '../src/games/mural-maker/mural.js';
+import { PER_PAGE, STREET_COLS, pageCount, pageOf, slotWall, swipeTurn, isTapMove, streetLayout } from '../src/games/mural-maker/index.js';
 
 const MURALS = MURAL_DEFS.map(compileMural);
 const ALL = WALL_DEFS.map(compileMural);
@@ -26,14 +27,22 @@ function scribble(wall, n, { paint = '3', size = 1, seed = 5, drip = false, x0 =
 }
 
 describe('the murals', () => {
-  it('has twelve murals and four free walls, all with unique ids', () => {
-    expect(MURAL_DEFS.length).toBe(12);
+  it('has three pages of twelve murals and four free walls, all with unique ids', () => {
+    expect(MURAL_DEFS.length).toBe(36);
+    expect(MURAL_DEFS.length % PER_PAGE).toBe(0);
     expect(FREE_DEFS.length).toBe(4);
     const ids = WALL_DEFS.map((d) => d.id);
     expect(new Set(ids).size).toBe(ids.length);
-    for (const id of ['flamingo', 'gator', 'parrot', 'palm-sunset', 'rocket', 'octopus', 'ice-cream', 'dolphin', 'robot', 'dino', 'lighthouse', 'riley']) {
+    for (const id of [
+      'flamingo', 'gator', 'parrot', 'palm-sunset', 'rocket', 'octopus', 'ice-cream', 'dolphin', 'robot', 'dino', 'lighthouse', 'riley',
+      'shark', 'sea-turtle', 'pirate-ship', 'mermaid', 'crab', 'sandcastle', 'monster-truck', 'race-car', 'unicorn', 'dragon', 'astronaut', 'pizza',
+      'manatee', 'toucan', 'lifeguard-tower', 'hot-air-balloon', 'fire-truck', 'digger', 'butterfly', 'puppy', 'kitty', 'cupcake', 'castle', 'submarine',
+    ]) {
       expect(ids).toContain(id);
     }
+    // murals first, free walls last
+    expect(WALL_DEFS.slice(0, MURAL_DEFS.length).every((d) => !d.free)).toBe(true);
+    expect(WALL_DEFS.slice(MURAL_DEFS.length).every((d) => d.free)).toBe(true);
   });
 
   it('gives each mural plenty to colour', () => {
@@ -489,5 +498,88 @@ describe('spray paint counts as colouring in', () => {
     sprayAll(w);
     expect(checkSpray(fm, w)).toBe(false);
     expect(w.done).toBe(false);
+  });
+});
+
+describe('the street, a page at a time', () => {
+  const N = MURAL_DEFS.length;
+  const SIZES = [[820, 1180], [1180, 820], [390, 844]];
+
+  it('splits the murals into pages of twelve', () => {
+    expect(pageCount(36)).toBe(3);
+    expect(pageCount(37)).toBe(4);
+    expect(pageCount(12)).toBe(1);
+    expect(pageCount(0)).toBe(1);
+    expect(pageCount(N)).toBe(N / PER_PAGE);
+  });
+
+  it('knows which page a mural is on, and that free walls are on every page', () => {
+    expect(pageOf(0, 36)).toBe(0);
+    expect(pageOf(11, 36)).toBe(0);
+    expect(pageOf(12, 36)).toBe(1);
+    expect(pageOf(35, 36)).toBe(2);
+    expect(pageOf(36, 36)).toBe(-1); // the first free wall
+    expect(pageOf(-1, 36)).toBe(-1);
+    expect(pageOf(WALL_DEFS.findIndex((d) => d.id === 'dino'), N)).toBe(0);
+    expect(pageOf(WALL_DEFS.findIndex((d) => d.id === 'submarine'), N)).toBe(2);
+  });
+
+  it('fills each page with its twelve murals and the same free walls along the bottom', () => {
+    const seen = new Set();
+    for (let p = 0; p < pageCount(N); p++) {
+      const slots = Array.from({ length: PER_PAGE + FREE_DEFS.length }, (_, k) => slotWall(p, k, N));
+      for (const i of slots.slice(0, PER_PAGE)) {
+        expect(WALL_DEFS[i].free).toBeFalsy();
+        expect(pageOf(i, N)).toBe(p);
+        seen.add(i);
+      }
+      expect(slots.slice(PER_PAGE).map((i) => WALL_DEFS[i].id)).toEqual(FREE_DEFS.map((d) => d.id));
+    }
+    expect(seen.size).toBe(N);
+    // a short last page leaves its spare slots empty
+    expect(slotWall(1, 5, 15)).toBe(-1);
+    expect(slotWall(1, 2, 15)).toBe(14);
+    expect(slotWall(1, 12, 15)).toBe(15);
+  });
+
+  it('turns the page for a sideways swipe only', () => {
+    expect(swipeTurn(-200, 10, 820)).toBe(1);
+    expect(swipeTurn(200, -20, 820)).toBe(-1);
+    expect(swipeTurn(30, 0, 820)).toBe(0); // too short
+    expect(swipeTurn(-120, 200, 820)).toBe(0); // mostly up and down
+    expect(swipeTurn(-50, 0, 390)).toBe(1); // a phone needs less
+    expect(isTapMove(3, -4)).toBe(true);
+    expect(isTapMove(40, 0)).toBe(false);
+  });
+
+  it('lays the street out with everything on screen, big arrows clear of the bottom edge', () => {
+    for (const [w, h] of SIZES) {
+      const L = streetLayout(w, h, 3);
+      expect(L.slots.length).toBe(PER_PAGE + STREET_COLS);
+      const all = [L.home, L.prev, L.next, L.dots, ...L.slots];
+      for (const b of all) {
+        expect(b.x, `${w}x${h}`).toBeGreaterThanOrEqual(0);
+        expect(b.y).toBeGreaterThanOrEqual(0);
+        expect(b.x + b.w).toBeLessThanOrEqual(w);
+        expect(b.y + b.h).toBeLessThanOrEqual(h - 40);
+      }
+      for (const b of [L.prev, L.next, L.dots]) {
+        expect(b.h, `${w}x${h} ${b.id}`).toBeGreaterThanOrEqual(52);
+        expect(b.w).toBeGreaterThanOrEqual(52);
+        // nothing else under the page controls
+        for (const s of L.slots) expect(s.y + s.h).toBeLessThan(b.y);
+      }
+      // arrows either side of the dots, not overlapping
+      expect(L.prev.x + L.prev.w).toBeLessThan(L.dots.x);
+      expect(L.next.x).toBeGreaterThan(L.dots.x + L.dots.w);
+      // tiles are all the same size, a 3:4 wall, in a 4 x 4 grid with the free walls last
+      for (const s of L.slots) {
+        expect(s.w).toBeCloseTo(L.slots[0].w);
+        expect(s.h / s.w).toBeCloseTo(WALL_H / WALL_W);
+        expect(s.w).toBeGreaterThanOrEqual(60);
+      }
+      expect(Math.max(...L.slots.map((s) => s.row))).toBe(PER_PAGE / STREET_COLS);
+      expect(L.slots.slice(PER_PAGE).every((s) => s.row === PER_PAGE / STREET_COLS)).toBe(true);
+    }
   });
 });

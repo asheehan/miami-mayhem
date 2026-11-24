@@ -11,11 +11,13 @@ import {
 import {
   C, font, roundRect, outlined, makeCanvas, renderFills, renderLines, renderPaint, drawStroke, drawDrip, drawStamp,
   drawTwinkles, drawHint, drawWink, drawFx, drawConfetti, renderWallImage, drawStar, drawTool, glyph, drawSwatch,
-  drawStampIcon, paintColour, tracePath, applyXf,
+  drawStampIcon, paintColour, tracePath, applyXf, drawArrow, drawDots,
 } from './draw.js';
 
 const WALLS = WALL_DEFS.map(compileMural);
 const byId = new Map(WALLS.map((m) => [m.id, m]));
+const MURAL_N = WALLS.filter((wm) => !wm.free).length; // murals come first, then the free walls
+const LAST_KEY = 'mural-maker-last'; // the id of the wall opened last, so the street opens on its page
 
 const WIPE_TIME = 0.42; // s for a fill to spray in
 const ALIVE_TIME = 4.4; // s the mural comes alive for
@@ -42,6 +44,79 @@ export const muralMaker = {
   drawTile,
   create,
 };
+
+// ---------------------------------------------------------------------------------------------
+// The street's pages: twelve murals to a page, the free walls along the bottom of every page
+// ---------------------------------------------------------------------------------------------
+
+export const PER_PAGE = 12;
+export const STREET_COLS = 4;
+export const pageCount = (murals, per = PER_PAGE) => Math.max(1, Math.ceil(murals / per));
+
+// The page a wall is on, or -1 for a free wall (they are on every page).
+export const pageOf = (index, murals, per = PER_PAGE) => (index >= 0 && index < murals ? Math.floor(index / per) : -1);
+
+// Which wall sits in a slot of the grid: slots 0..per-1 hold the page's murals (-1 when the
+// last page runs out), the slots after them the free walls.
+export function slotWall(page, slot, murals, per = PER_PAGE) {
+  if (slot < per) {
+    const i = page * per + slot;
+    return i < murals ? i : -1;
+  }
+  return murals + slot - per;
+}
+
+// Where a finger went from press to lift: +1 (next page) for a swipe to the left, -1 for a
+// swipe to the right, 0 for anything else.
+export function swipeTurn(dx, dy, width) {
+  if (Math.abs(dx) < Math.max(40, width * 0.08)) return 0;
+  if (Math.abs(dx) < Math.abs(dy) * 1.2) return 0;
+  return dx < 0 ? 1 : -1;
+}
+
+// A press that barely moved is a tap.
+export const isTapMove = (dx, dy) => Math.hypot(dx, dy) < 20;
+
+// The street's layout for a screen. Every page uses the same slots, so tiles never move
+// when the page turns. The arrows and dots sit in a row along the bottom, well clear of the
+// strip at the very bottom of an iPad screen that iOS keeps for its home gesture.
+export function streetLayout(w, h, pages) {
+  const pad = clamp(w * 0.025, 10, 20);
+  const icon = clamp(Math.min(w, h) * 0.12, 48, 68);
+  const home = { id: 'home', x: pad, y: pad, w: icon, h: icon };
+  const foot = Math.max(44, h * 0.04);
+  const navH = clamp(h * 0.065, 56, 76);
+  const navY = h - foot - navH;
+  const dotStep = navH * 0.7;
+  const dotsW = Math.max(navH, pages * dotStep);
+  const dots = { id: 'dots', x: (w - dotsW) / 2, y: navY, w: dotsW, h: navH, pages };
+  const aw = Math.min(navH * 1.8, (w - dotsW) / 2 - pad - 12);
+  const gap = clamp(w * 0.04, 12, 48);
+  const prev = { id: 'prev', x: dots.x - gap - aw, y: navY, w: aw, h: navH };
+  const next = { id: 'next', x: dots.x + dotsW + gap, y: navY, w: aw, h: navH };
+  // the grid: three rows of murals and the row of free walls
+  const cols = STREET_COLS;
+  const rows = PER_PAGE / cols + 1;
+  const top = icon + pad * 2;
+  const bottom = navY - pad * 0.6;
+  const rowH = (bottom - top) / rows;
+  const cellW = (w - pad * 2) / cols;
+  let ph = rowH * 0.74;
+  let pw = (ph * WALL_W) / WALL_H;
+  if (pw > cellW * 0.84) {
+    pw = cellW * 0.84;
+    ph = (pw * WALL_H) / WALL_W;
+  }
+  const slots = [];
+  for (let k = 0; k < rows * cols; k++) {
+    const col = k % cols;
+    const row = Math.floor(k / cols);
+    const cx = pad + cellW * (col + 0.5);
+    const ground = top + rowH * (row + 1) - rowH * 0.07;
+    slots.push({ slot: k, x: cx - pw / 2, y: ground - ph - rowH * 0.05, w: pw, h: ph, row, col, cellW, rowH, ground });
+  }
+  return { home, prev, next, dots, slots, top, muralBottom: top + rowH * (rows - 1), navY, foot };
+}
 
 function create(host) {
   const params = new URLSearchParams(location.search);
@@ -77,6 +152,22 @@ function create(host) {
   let gesture = null; // { kind: 'spray', marks } | { kind: 'stamp', mark, x0, y0 }
   let alive = null; // { t, confetti }
   let sticker = null; // { t } the star flying onto a finished wall
+
+  // the street's pages
+  const pages = pageCount(MURAL_N);
+  let page = 0;
+  let press = null; // a finger down on the street: { x, y, dx, dy }
+  let slide = 0; // px the murals are shifted by while a page slides into place
+  {
+    let last = null;
+    try {
+      last = store.getItem(LAST_KEY);
+    } catch {
+      // no saved page is fine
+    }
+    const at = pageOf(WALLS.findIndex((wm) => wm.id === last), MURAL_N);
+    if (at >= 0) page = at;
+  }
 
   const paint = () => paintFor(swatch, base);
   const touched = () => {
@@ -167,30 +258,52 @@ function create(host) {
     }
   }
 
-  // The street: rows of warehouses, each with one wall.
+  // The street: rows of warehouses, each with one wall. One page of murals at a time, with
+  // the free walls along the bottom.
+  let street = null; // streetLayout() for the current size
   function layoutStreet() {
-    const { w, h } = size;
-    const pad = clamp(w * 0.025, 10, 20);
-    const icon = clamp(w * 0.12, 48, 68);
-    buttons = [{ id: 'home', x: pad, y: pad, w: icon, h: icon }];
-    const cols = 4;
-    const rows = Math.ceil(WALLS.length / cols);
-    const top = icon + pad * 2;
-    const rowH = (h - top - pad) / rows;
-    const cellW = (w - pad * 2) / cols;
-    let ph = rowH * 0.74;
-    let pw = (ph * WALL_W) / WALL_H;
-    if (pw > cellW * 0.84) {
-      pw = cellW * 0.84;
-      ph = (pw * WALL_H) / WALL_W;
+    street = streetLayout(size.w, size.h, pages);
+    buttons = [street.home];
+    for (const s of street.slots) {
+      const index = slotWall(page, s.slot, MURAL_N);
+      if (index >= 0) buttons.push({ id: 'wall', index, ...s });
     }
-    WALLS.forEach((wm, i) => {
-      const col = i % cols;
-      const row = Math.floor(i / cols);
-      const cx = pad + cellW * (col + 0.5);
-      const ground = top + rowH * (row + 1) - rowH * 0.07;
-      buttons.push({ id: 'wall', index: i, x: cx - pw / 2, y: ground - ph - rowH * 0.05, w: pw, h: ph, row, col, cellW, rowH, ground });
+    if (pages > 1) {
+      buttons.push({ ...street.dots, page });
+      if (page > 0) buttons.push(street.prev);
+      if (page < pages - 1) buttons.push(street.next);
+    }
+  }
+
+  function turnPage(to, fromSwipeDx = 0) {
+    const next = clamp(to, 0, pages - 1);
+    if (next === page) {
+      slide = fromSwipeDx; // springs back
+      return false;
+    }
+    const dir = next > page ? 1 : -1;
+    // the new page comes in from the side the old one is leaving by
+    slide = fromSwipeDx + dir * size.w;
+    page = next;
+    if (screen === 'street') layout();
+    return true;
+  }
+
+  // A tap on the street (also a press that barely moved).
+  function streetTap(x, y) {
+    const near = 16; // the arrows and dots take near misses too
+    const b = buttons.find((r) => {
+      const p = r.id === 'prev' || r.id === 'next' || r.id === 'dots' ? near : 0;
+      return x >= r.x - p && x <= r.x + r.w + p && y >= r.y - p && y <= r.y + r.h + p;
     });
+    if (!b) return;
+    if (b.id === 'home') {
+      save();
+      host.exit();
+    } else if (b.id === 'wall') openWall(b.index);
+    else if (b.id === 'prev') turnPage(page - 1);
+    else if (b.id === 'next') turnPage(page + 1);
+    else if (b.id === 'dots') turnPage(clamp(Math.floor(((x - b.x) / b.w) * pages), 0, pages - 1));
   }
 
   function layout() {
@@ -234,6 +347,18 @@ function create(host) {
   function openWall(index) {
     m = WALLS[index];
     wall = progress.walls[m.id] || (progress.walls[m.id] = createWall(m));
+    // back on the street, this mural's page is the one showing
+    const at = pageOf(index, MURAL_N);
+    if (at >= 0) {
+      page = at;
+      try {
+        store.setItem(LAST_KEY, m.id);
+      } catch {
+        // remembering the page is only a nicety
+      }
+    }
+    slide = 0;
+    press = null;
     screen = 'paint';
     tool = 'fill';
     confirm = false;
@@ -600,48 +725,69 @@ function create(host) {
     drawTool(ctx, home);
     glyph(ctx, 'home', home.x + home.w / 2, home.y + home.h / 2, home.w * 0.72);
     outlined(ctx, 'Mural Maker', w / 2, home.y + home.h / 2, Math.min(home.h * 0.62, w / 10), C.sun, w - (home.x + home.w) * 2 - 20);
-    const walls = buttons.filter((b) => b.id === 'wall');
     // one sidewalk per row, behind the buildings' feet
-    const rows = new Map();
-    for (const b of walls) rows.set(b.row, b);
-    for (const b of rows.values()) {
+    const rowsSeen = new Set();
+    for (const s of street.slots) {
+      if (rowsSeen.has(s.row)) continue;
+      rowsSeen.add(s.row);
       ctx.fillStyle = '#5b3a8c';
-      ctx.fillRect(0, b.ground, w, b.rowH * 0.07);
+      ctx.fillRect(0, s.ground, w, s.rowH * 0.07);
       ctx.fillStyle = '#d9cfe8';
-      ctx.fillRect(0, b.ground - 2, w, b.rowH * 0.035);
+      ctx.fillRect(0, s.ground - 2, w, s.rowH * 0.035);
     }
-    for (const b of walls) {
-      const wm = WALLS[b.index];
-      const wl = progress.walls[wm.id];
-      // the warehouse
-      const bx = b.x - b.w * 0.09;
-      const bw = b.w * 1.18;
-      const top = b.y - b.rowH * 0.1 - ((b.index * 7) % 3) * b.rowH * 0.03;
-      ctx.fillStyle = BUILDINGS[b.index % BUILDINGS.length];
-      ctx.fillRect(bx, top, bw, b.ground - top);
-      ctx.fillStyle = 'rgba(0,0,0,0.18)';
-      ctx.fillRect(bx, top, bw, Math.max(4, b.rowH * 0.025));
-      ctx.lineWidth = 2.5;
-      ctx.strokeStyle = C.ink;
-      ctx.strokeRect(bx, top, bw, b.ground - top);
-      // the mural
-      const th = thumbFor(wm, wl, b.w);
-      ctx.drawImage(th, b.x, b.y, b.w, b.h);
-      if (wm.free && isBlank(wl)) {
-        ctx.globalAlpha = 0.5;
-        glyph(ctx, 'spray', b.x + b.w / 2, b.y + b.h / 2, b.w * 0.6);
-        ctx.globalAlpha = 1;
+    // the murals: this page, and while it slides in, the page beside it
+    const span = w;
+    const shown = [[page, slide]];
+    if (slide > 0.5 && page > 0) shown.push([page - 1, slide - span]);
+    if (slide < -0.5 && page < pages - 1) shown.push([page + 1, slide + span]);
+    for (const [p, dx] of shown) {
+      if (dx <= -span || dx >= span) continue;
+      for (const s of street.slots) {
+        if (s.slot >= PER_PAGE) continue;
+        const index = slotWall(p, s.slot, MURAL_N);
+        if (index >= 0) drawWallTile(ctx, s, index, dx);
       }
-      ctx.lineWidth = 3;
-      ctx.strokeStyle = C.ink;
-      ctx.strokeRect(b.x, b.y, b.w, b.h);
-      if (wl.done) {
-        ctx.save();
-        ctx.translate(b.x + b.w - 4, b.y + 4);
-        ctx.rotate(0.25 + Math.sin(time * 2 + b.index) * 0.08);
-        drawStar(ctx, 0, 0, Math.max(12, b.w * 0.2));
-        ctx.restore();
-      }
+    }
+    for (const s of street.slots) if (s.slot >= PER_PAGE) drawWallTile(ctx, s, slotWall(page, s.slot, MURAL_N), 0);
+    // page turning
+    for (const b of buttons) {
+      if (b.id === 'dots') drawDots(ctx, b, page, pages, time);
+      else if (b.id === 'prev' || b.id === 'next') drawArrow(ctx, b, b.id === 'next' ? 1 : -1, time);
+    }
+  }
+
+  function drawWallTile(ctx, s, index, dx) {
+    const wm = WALLS[index];
+    const wl = progress.walls[wm.id];
+    const b = { ...s, x: s.x + dx };
+    // the warehouse
+    const bx = b.x - b.w * 0.09;
+    const bw = b.w * 1.18;
+    const top = b.y - b.rowH * 0.1 - ((index * 7) % 3) * b.rowH * 0.03;
+    ctx.fillStyle = BUILDINGS[index % BUILDINGS.length];
+    ctx.fillRect(bx, top, bw, b.ground - top);
+    ctx.fillStyle = 'rgba(0,0,0,0.18)';
+    ctx.fillRect(bx, top, bw, Math.max(4, b.rowH * 0.025));
+    ctx.lineWidth = 2.5;
+    ctx.strokeStyle = C.ink;
+    ctx.strokeRect(bx, top, bw, b.ground - top);
+    // the mural
+    const th = thumbFor(wm, wl, b.w);
+    ctx.drawImage(th, b.x, b.y, b.w, b.h);
+    if (wm.free && isBlank(wl)) {
+      ctx.globalAlpha = 0.5;
+      glyph(ctx, 'spray', b.x + b.w / 2, b.y + b.h / 2, b.w * 0.6);
+      ctx.globalAlpha = 1;
+    }
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = C.ink;
+    ctx.strokeRect(b.x, b.y, b.w, b.h);
+    if (wl.done) {
+      ctx.save();
+      ctx.translate(b.x + b.w - 4, b.y + 4);
+      ctx.rotate(0.25 + Math.sin(time * 2 + index) * 0.08);
+      drawStar(ctx, 0, 0, Math.max(12, b.w * 0.2));
+      ctx.restore();
     }
   }
 
@@ -651,6 +797,14 @@ function create(host) {
     window.__mural = {
       walls: () => WALLS.map((wm, i) => ({ i, id: wm.id, regions: wm.regions.length, free: wm.free })),
       screen: () => screen,
+      page: () => page,
+      pages: () => pages,
+      slide: () => slide,
+      // turns the street by n pages (as the arrows do), or to page `to`
+      turn: (n = 1) => turnPage(page + n),
+      goto: (to) => turnPage(to),
+      // the street's tiles on the current page: { index, id, x, y, w, h } (finger targets)
+      tiles: () => buttons.filter((b) => b.id === 'wall').map((b) => ({ index: b.index, id: WALLS[b.index].id, x: b.x, y: b.y, w: b.w, h: b.h })),
       open: (id) => openWall(typeof id === 'string' ? WALLS.findIndex((wm) => wm.id === id) : id),
       street: () => toStreet(),
       wall: () => wall && JSON.parse(JSON.stringify({ ...wall, history: wall.history.length })),
@@ -705,6 +859,30 @@ function create(host) {
         saveIn -= dt;
         if (saveIn < 0) save();
       }
+      if (screen === 'street') {
+        // a page slides into place (unless a finger is holding it)
+        if (slide && !press) {
+          slide *= Math.exp(-dt * 14);
+          if (Math.abs(slide) < 0.5) slide = 0;
+        }
+        // paint the thumbnails of the pages either side ahead of time, one a frame
+        if (!slide && street) {
+          const pw = street.slots[0].w;
+          const want = Math.max(16, Math.round(pw * dprNow()));
+          for (const p of [page - 1, page + 1]) {
+            if (p < 0 || p >= pages) continue;
+            const i = [...Array(PER_PAGE).keys()].map((k) => slotWall(p, k, MURAL_N)).find((j) => {
+              if (j < 0) return false;
+              const c = thumbs.get(WALLS[j].id);
+              return !c || c.w !== want || c.ver !== versions[WALLS[j].id];
+            });
+            if (i !== undefined) {
+              thumbFor(WALLS[i], progress.walls[WALLS[i].id], pw);
+              break;
+            }
+          }
+        }
+      }
       if (screen !== 'paint') return;
       if (wipe) {
         wipe.t += dt;
@@ -747,6 +925,12 @@ function create(host) {
     },
 
     onPickUp(x, y) {
+      if (screen === 'street') {
+        // every touch on the street is followed, so a sideways swipe can turn the page;
+        // one that barely moves is a tap when it lifts
+        press = { x, y, dx: 0, dy: 0, slide0: slide };
+        return true;
+      }
       if (screen !== 'paint' || confirm) return false;
       if (buttons.some((b) => hit(b, x, y))) return false;
       if (!onWall(x, y) || tool === 'fill') return false;
@@ -768,6 +952,16 @@ function create(host) {
     },
 
     onDrag(x, y) {
+      if (press) {
+        press.dx = x - press.x;
+        press.dy = y - press.y;
+        // the murals follow a sideways finger, reluctantly past the first and last pages
+        if (Math.abs(press.dx) > Math.abs(press.dy) && !isTapMove(press.dx, press.dy)) {
+          const end = (press.dx > 0 && page === 0) || (press.dx < 0 && page === pages - 1);
+          slide = press.slide0 + press.dx * (end ? 0.3 : 1);
+        }
+        return;
+      }
       if (!gesture) return;
       const p = toWall(x, y);
       if (gesture.kind === 'spray') {
@@ -786,6 +980,22 @@ function create(host) {
     },
 
     onDrop(x, y) {
+      if (press) {
+        const p = press;
+        p.dx = x - p.x;
+        p.dy = y - p.y;
+        press = null;
+        if (screen !== 'street') return;
+        if (isTapMove(p.dx, p.dy)) {
+          slide = p.slide0;
+          streetTap(p.x, p.y);
+          return;
+        }
+        const dir = swipeTurn(p.dx, p.dy, size.w);
+        if (dir) turnPage(page + dir, slide);
+        // anything else (a slow drag, or one up and down) just springs back
+        return;
+      }
       if (!gesture) return;
       api.onDrag(x, y);
       if (gesture.kind === 'spray') {
@@ -805,12 +1015,7 @@ function create(host) {
 
     onTap(x, y) {
       if (screen === 'street') {
-        const b = buttons.find((r) => hit(r, x, y));
-        if (!b) return;
-        if (b.id === 'home') {
-          save();
-          host.exit();
-        } else if (b.id === 'wall') openWall(b.index);
+        streetTap(x, y);
         return;
       }
       const b = buttons.find((r) => hit(r, x, y));
