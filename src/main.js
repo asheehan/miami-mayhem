@@ -3,6 +3,7 @@
 import { attachInput } from './input.js';
 import { games } from './games/index.js';
 import { drawLauncher, launcherButtons, pageCount } from './launcher.js';
+import { nextScale, refreshPeriod, steadyGap } from './pacing.js';
 
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
@@ -13,12 +14,19 @@ const launcher = { games, buttons: [], time: 0 };
 let page = 0; // which page of the launcher is showing
 let swipe = null; // where a touch on the launcher began
 
+// How many canvas pixels per CSS pixel. Never more than 2 (phones report 3, which is a lot
+// of pixels to fill for no visible gain), and lowered a step when frames come too slowly.
+const MAX_SCALE = 2;
+let scale = Math.min(window.devicePixelRatio || 1, MAX_SCALE);
+window.__renderScale = scale; // the 3D games read this for their own canvases
+const perf = { fps: 60, work: 0, scale, show: new URLSearchParams(location.search).has('fps') };
+window.__perf = perf;
+
 function resize() {
-  const dpr = window.devicePixelRatio || 1;
   size = { w: canvas.clientWidth, h: canvas.clientHeight };
-  canvas.width = Math.round(size.w * dpr);
-  canvas.height = Math.round(size.h * dpr);
-  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  canvas.width = Math.round(size.w * scale);
+  canvas.height = Math.round(size.h * scale);
+  ctx.setTransform(scale, 0, 0, scale, 0, 0);
   launcher.buttons = launcherButtons(size.w, size.h, games, page);
   if (active) active.resize(size.w, size.h);
 }
@@ -85,10 +93,49 @@ attachInput(canvas, {
 
 window.addEventListener('resize', resize);
 
+// Frame pacing: see pacing.js. Every couple of seconds the typical gap between frames is
+// looked at, to learn the display's rate and to make the canvas coarser if a game is slow.
+const gaps = [];
+const pacing = { scale, tried: null, settled: false };
+let period = 1000 / 60;
+
+function pace(gap) {
+  if (gap > 250) return; // a pause, not a slow frame
+  gaps.push(gap);
+  if (gaps.length < 120) return;
+  gaps.sort((a, b) => a - b);
+  const typical = gaps[gaps.length >> 1];
+  gaps.length = 0;
+  perf.fps = Math.round(1000 / typical);
+  period = refreshPeriod(typical, period);
+  if (!active) return;
+  const next = nextScale(pacing, typical);
+  if (next === scale) return;
+  scale = next;
+  perf.scale = scale;
+  window.__renderScale = scale;
+  resize();
+}
+
+function drawPerf() {
+  const text = `${perf.fps} fps  ${perf.work.toFixed(1)} ms  x${perf.scale}`;
+  ctx.save();
+  ctx.font = '700 14px system-ui, sans-serif';
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'top';
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
+  ctx.fillRect(size.w / 2 - 80, size.h - 22, 160, 20);
+  ctx.fillStyle = '#fff';
+  ctx.fillText(text, size.w / 2 - 74, size.h - 19);
+  ctx.restore();
+}
+
 let last = performance.now();
 function frame(now) {
-  const dt = Math.min((now - last) / 1000, 0.05);
+  const gap = now - last;
+  const dt = Math.min(steadyGap(gap, period) / 1000, 0.05);
   last = now;
+  const t0 = performance.now();
   if (active) {
     active.update(dt);
     active.draw(ctx);
@@ -96,6 +143,9 @@ function frame(now) {
     launcher.time += dt;
     drawLauncher(ctx, size.w, size.h, launcher);
   }
+  perf.work += (performance.now() - t0 - perf.work) * 0.05;
+  pace(gap);
+  if (perf.show) drawPerf();
   requestAnimationFrame(frame);
 }
 

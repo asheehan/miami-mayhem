@@ -40,7 +40,7 @@ function labelTexture(text, good) {
 
 export function createView(track, finaleKind = 'striker') {
   const renderer = new THREE.WebGLRenderer({ antialias: true });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, window.__renderScale || 2, 1.5));
   const el = renderer.domElement;
   Object.assign(el.style, { position: 'fixed', left: '0', top: '0', width: '100vw', height: '100dvh', zIndex: '0' });
 
