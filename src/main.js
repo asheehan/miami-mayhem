@@ -52,7 +52,13 @@ function launcherTouch(x0, y0, x, y) {
     const p = r.id === 'prev' || r.id === 'next' ? pad : 0;
     return x >= r.x - p && x <= r.x + r.w + p && y >= r.y - p && y <= r.y + r.h + p;
   });
-  if (!b) return;
+  if (!b) {
+    // anywhere along the arrows' row counts: left of the dots goes back, right goes on
+    const dots = launcher.buttons.find((r) => r.id === 'dots');
+    if (dots && y >= dots.y - pad) turnPage(x < dots.x + dots.w / 2 ? -1 : 1);
+    return;
+  }
+  if (b.id === 'dots') return turnPage(x < b.x + b.w / 2 ? -1 : 1);
   if (b.id === 'game') open(games[b.index]);
   else if (b.id === 'prev') turnPage(-1);
   else if (b.id === 'next') turnPage(1);
