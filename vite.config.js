@@ -3,6 +3,8 @@ import { VitePWA } from 'vite-plugin-pwa';
 
 export default defineConfig({
   base: '/miami-mayhem/',
+  // the deploy machine is several times slower than a laptop, and a few tests are long sweeps
+  test: { testTimeout: 30000 },
   plugins: [
     VitePWA({
       registerType: 'autoUpdate',

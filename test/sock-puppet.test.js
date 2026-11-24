@@ -671,7 +671,7 @@ describe('the story generator', () => {
         }
       }
     }
-  });
+  }, 60000);
 
   it('names puppet friends by name, and tells two puppets with the same name apart', () => {
     const picks = { place: 'castle', friend: 'p:abc', thing: 'map', problem: 'lost-hat', fix: 'tickles', ending: 'party' };
