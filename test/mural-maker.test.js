@@ -6,7 +6,7 @@ import {
   WALL_W, WALL_H, SWATCHES, COLOURS, isPaint, paintFor, paintInfo, compileMural, regionAt, regionPoint, insideRegion,
   createWall, fillRegion, isComplete, startStroke, extendStroke, endStroke, addStamp, resizeStamp, undo, clearWall,
   dripsFor, simplify, encodeWall, decodeWall, serializeProgress, parseProgress, loadProgress, saveProgress, SAVE_KEY,
-  WALL_BUDGET, MAX_POINTS, STAMP_MIN, STAMP_MAX, STAMP_SIZE, HISTORY_MAX,
+  WALL_BUDGET, MAX_POINTS, STAMP_MIN, STAMP_MAX, STAMP_SIZE, HISTORY_MAX, checkSpray, blankRegions,
 } from '../src/games/mural-maker/mural.js';
 
 const MURALS = MURAL_DEFS.map(compileMural);
@@ -425,5 +425,69 @@ describe('saved progress', () => {
     const w = parseProgress(raw, ALL).walls.flamingo;
     expect(w.fills.slice(0, 3)).toEqual(['1', null, null]);
     expect(w.marks).toEqual([{ t: 'm', k: 'star', p: '1', x: 1, y: 1, z: STAMP_MAX, a: 3 }]);
+  });
+});
+
+describe('spray paint counts as colouring in', () => {
+  // sprays the whole wall with the big can, row by row
+  const sprayAll = (w, gap = 40) => {
+    for (let y = 0; y <= WALL_H; y += gap) {
+      startStroke(w, { paint: '1', size: 2, x: 0, y });
+      extendStroke(w, WALL_W, y);
+      endStroke(w);
+    }
+  };
+
+  it('a mural sprayed all over is finished and gets its star, once', () => {
+    for (const mm of MURALS) {
+      const w = createWall(mm);
+      expect(checkSpray(mm, w)).toBe(false);
+      sprayAll(w);
+      expect(checkSpray(mm, w), mm.id).toBe(true);
+      expect(isComplete(w)).toBe(true);
+      expect(w.done).toBe(true);
+      expect(checkSpray(mm, w)).toBe(false);
+    }
+  });
+
+  it('fills and spray add up, and a scribble is not enough', () => {
+    const mm = MURALS[0];
+    const w = createWall(mm);
+    startStroke(w, { paint: '1', size: 0, x: 10, y: 10 });
+    extendStroke(w, 590, 790);
+    endStroke(w);
+    expect(checkSpray(mm, w)).toBe(false);
+    expect(blankRegions(w).length).toBe(mm.regions.length);
+    // fill all but the sky, then spray the lot
+    let done = 0;
+    mm.regions.forEach((r, i) => {
+      if (i > 0 && fillRegion(w, i, '2').completed) done++;
+    });
+    expect(done).toBe(0);
+    expect(blankRegions(w)).toEqual([0]);
+    sprayAll(w);
+    expect(checkSpray(mm, w)).toBe(true);
+    // undoing the spray leaves the sky blank again, but the star stays
+    while (w.marks.length) undo(w);
+    checkSpray(mm, w);
+    expect(isComplete(w)).toBe(false);
+    expect(w.done).toBe(true);
+  });
+
+  it('a saved wall that was sprayed full earns its star when looked at again', () => {
+    const mm = MURALS[0];
+    const w = createWall(mm);
+    sprayAll(w);
+    const back = decodeWall(JSON.parse(JSON.stringify(encodeWall(w))), mm);
+    expect(back.done).toBe(false);
+    expect(checkSpray(mm, back)).toBe(true);
+  });
+
+  it('free walls never finish', () => {
+    const fm = compileMural(FREE_DEFS[0]);
+    const w = createWall(fm);
+    sprayAll(w);
+    expect(checkSpray(fm, w)).toBe(false);
+    expect(w.done).toBe(false);
   });
 });

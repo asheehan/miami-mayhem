@@ -504,6 +504,16 @@ export function drawTwinkles(g, m, fills, time) {
   g.globalAlpha = 1;
 }
 
+// A gold sparkle that pulses over a spot still waiting for colour.
+export function drawHint(g, x, y, time) {
+  const a = 0.5 + 0.5 * Math.sin(time * 4);
+  g.save();
+  g.globalAlpha = 0.55 + 0.45 * a;
+  sparkle(g, x, y, 15 + 7 * a, '#1f1440');
+  sparkle(g, x, y, 11 + 6 * a, '#ffd23f');
+  g.restore();
+}
+
 // The wink: an eyelid the colour of the face closes over the eye and opens again.
 export function drawWink(g, w, amount, lidPaint) {
   if (amount <= 0) return;

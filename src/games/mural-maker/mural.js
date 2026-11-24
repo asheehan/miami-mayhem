@@ -177,7 +177,82 @@ const pushHistory = (wall, h) => {
   if (wall.history.length > HISTORY_MAX) wall.history.shift();
 };
 
-export const isComplete = (wall) => wall.fills.length > 0 && wall.fills.every(Boolean);
+// A region counts as coloured when it was filled, or when spray paint covers most of it.
+export const isColoured = (wall, i) => !!(wall.fills[i] || (wall.sprayed && wall.sprayed[i]));
+export const isComplete = (wall) => wall.fills.length > 0 && wall.fills.every((_, i) => isColoured(wall, i));
+// The regions still waiting for colour.
+export const blankRegions = (wall) => wall.fills.map((_, i) => i).filter((i) => !isColoured(wall, i));
+
+const GRID = 12; // spray cover is measured on a grid this coarse (wall units)
+export const SPRAY_COVER = 0.7; // this share of a region under spray counts as coloured
+
+// Which region shows at each grid cell, worked out once per mural.
+function muralGrid(m) {
+  if (m.grid) return m.grid;
+  const cols = Math.ceil(WALL_W / GRID);
+  const rows = Math.ceil(WALL_H / GRID);
+  const owner = new Int16Array(cols * rows);
+  const totals = m.regions.map(() => 0);
+  for (let gy = 0; gy < rows; gy++) {
+    for (let gx = 0; gx < cols; gx++) {
+      const i = regionAt(m, (gx + 0.5) * GRID, (gy + 0.5) * GRID);
+      owner[gy * cols + gx] = i;
+      if (i >= 0) totals[i]++;
+    }
+  }
+  m.grid = { cols, rows, owner, totals };
+  return m.grid;
+}
+
+// For each region, whether the wall's spray strokes cover most of what shows of it.
+export function sprayedRegions(m, wall) {
+  const { cols, rows, owner, totals } = muralGrid(m);
+  const strokes = wall.marks.filter((k) => k.t === 's');
+  if (!strokes.length) return totals.map(() => false);
+  const hit = new Uint8Array(cols * rows);
+  for (const k of strokes) {
+    const rad = (BRUSHES[k.w] ?? BRUSHES[1]) * 0.5;
+    const q = k.q;
+    for (let n = 0; n < q.length; n += 2) {
+      const ax = q[n];
+      const ay = q[n + 1];
+      const bx = n + 2 < q.length ? q[n + 2] : ax;
+      const by = n + 2 < q.length ? q[n + 3] : ay;
+      const x0 = Math.max(0, Math.floor((Math.min(ax, bx) - rad) / GRID));
+      const x1 = Math.min(cols - 1, Math.floor((Math.max(ax, bx) + rad) / GRID));
+      const y0 = Math.max(0, Math.floor((Math.min(ay, by) - rad) / GRID));
+      const y1 = Math.min(rows - 1, Math.floor((Math.max(ay, by) + rad) / GRID));
+      const dx = bx - ax;
+      const dy = by - ay;
+      const len2 = dx * dx + dy * dy;
+      for (let gy = y0; gy <= y1; gy++) {
+        for (let gx = x0; gx <= x1; gx++) {
+          const c = gy * cols + gx;
+          if (hit[c]) continue;
+          const px = (gx + 0.5) * GRID;
+          const py = (gy + 0.5) * GRID;
+          const u = len2 ? Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / len2)) : 0;
+          if (Math.hypot(px - ax - dx * u, py - ay - dy * u) <= rad) hit[c] = 1;
+        }
+      }
+    }
+  }
+  const got = totals.map(() => 0);
+  for (let c = 0; c < hit.length; c++) if (hit[c] && owner[c] >= 0) got[owner[c]]++;
+  return totals.map((t, i) => t > 0 && got[i] >= t * SPRAY_COVER);
+}
+
+// Looks again at what the spray covers (after a stroke, an undo, a clear or a load).
+// Returns true when that is what finished the picture.
+export function checkSpray(m, wall) {
+  if (wall.free) return false;
+  const was = isComplete(wall);
+  wall.sprayed = sprayedRegions(m, wall);
+  const now = isComplete(wall);
+  const completed = now && (!was || !wall.done);
+  if (now) wall.done = true;
+  return completed;
+}
 export const filledCount = (wall) => wall.fills.filter(Boolean).length;
 export const isBlank = (wall) => !wall.marks.length && !wall.fills.some(Boolean);
 

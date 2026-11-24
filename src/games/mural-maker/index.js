@@ -5,12 +5,12 @@ import { WALL_DEFS } from './murals/index.js';
 import { STAMPS } from './stamps.js';
 import {
   WALL_W, WALL_H, SWATCHES, STAMP_SIZE, BRUSHES, compileMural, regionAt, regionPoint, createWall, fillRegion,
-  startStroke, extendStroke, endStroke, addStamp, resizeStamp, undo, clearWall, isComplete, isBlank, dripsFor,
+  startStroke, extendStroke, endStroke, addStamp, resizeStamp, undo, clearWall, isComplete, isBlank, dripsFor, checkSpray, blankRegions,
   loadProgress, saveProgress, paintFor,
 } from './mural.js';
 import {
   C, font, roundRect, outlined, makeCanvas, renderFills, renderLines, renderPaint, drawStroke, drawDrip, drawStamp,
-  drawTwinkles, drawWink, drawFx, drawConfetti, renderWallImage, drawStar, drawTool, glyph, drawSwatch,
+  drawTwinkles, drawHint, drawWink, drawFx, drawConfetti, renderWallImage, drawStar, drawTool, glyph, drawSwatch,
   drawStampIcon, paintColour, tracePath, applyXf,
 } from './draw.js';
 
@@ -246,7 +246,12 @@ function create(host) {
     layout();
     buildLayers();
     // a finished mural says hello when it's opened again
-    if (wall.done && isComplete(wall) && m.alive) startAlive(false);
+    // a picture that was coloured in before spray counted gets its star now
+    if (checkSpray(m, wall)) {
+      startAlive(true);
+      sticker = { t: 0 };
+      touched();
+    } else if (wall.done && isComplete(wall) && m.alive) startAlive(false);
   }
 
   function toStreet() {
@@ -348,6 +353,7 @@ function create(host) {
     if (!what) return;
     if (what === 'fills' || what === 'all') redrawFills();
     if (what === 'marks' || what === 'all') redrawPaint();
+    checkSpray(m, wall);
     touched();
   }
 
@@ -356,6 +362,7 @@ function create(host) {
     if (clearWall(wall)) {
       redrawFills();
       redrawPaint();
+      checkSpray(m, wall);
       touched();
     }
   }
@@ -445,6 +452,16 @@ function create(host) {
     ctx.translate(view.x, view.y);
     ctx.scale(view.s, view.s);
     drawTwinkles(ctx, m, wall.fills, time);
+    // nearly done: a sparkle shows each spot still waiting for colour
+    if (!m.free && !alive) {
+      const left = blankRegions(wall);
+      if (left.length && left.length <= Math.max(3, m.regions.length / 3)) {
+        for (const i of left) {
+          const p = regionPoint(m, i);
+          if (Number.isFinite(p.x)) drawHint(ctx, p.x, p.y, time + i * 0.7);
+        }
+      }
+    }
     if (alive && m.alive) {
       const xform = xformAt(t);
       const wk = m.alive.wink;
@@ -774,6 +791,10 @@ function create(host) {
       if (gesture.kind === 'spray') {
         endStroke(wall);
         for (const mk of gesture.marks) for (const d of dripsFor(mk)) drips.push({ mark: mk, d, cur: 0 });
+        if (checkSpray(m, wall)) {
+          startAlive(true);
+          sticker = { t: 0 };
+        }
       } else if (gesture.entry.held) {
         gesture.entry.held = false;
         gesture.entry.t = 0.3;
