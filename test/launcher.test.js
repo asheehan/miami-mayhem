@@ -50,7 +50,7 @@ describe('launcherButtons', () => {
             expect(b.x + b.w).toBeLessThanOrEqual(w);
             expect(b.y).toBeGreaterThanOrEqual(h * 0.3);
             expect(b.y + b.h).toBeLessThanOrEqual(h);
-            if (b.id === 'game') expect(b.w).toBeGreaterThanOrEqual(95);
+            if (b.id === 'game') expect(b.w).toBeGreaterThanOrEqual(90);
           }
           for (let i = 0; i < buttons.length; i++) {
             for (let j = i + 1; j < buttons.length; j++) {

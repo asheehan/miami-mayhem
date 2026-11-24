@@ -20,7 +20,7 @@ export function attachInput(canvas, handlers) {
     e.preventDefault();
     const p = point(e);
     const dragging = !!handlers.onPickUp?.(p.x, p.y);
-    active = { id: e.pointerId, dragging };
+    active = { id: e.pointerId, dragging, last: p };
     try {
       canvas.setPointerCapture(e.pointerId);
     } catch {
@@ -31,8 +31,9 @@ export function attachInput(canvas, handlers) {
   const move = (e) => {
     if (!active || e.pointerId !== active.id) return;
     e.preventDefault();
+    const p = point(e);
+    active.last = p;
     if (active.dragging) {
-      const p = point(e);
       handlers.onDrag?.(p.x, p.y);
     }
   };
@@ -40,7 +41,8 @@ export function attachInput(canvas, handlers) {
   const up = (e) => {
     if (!active || e.pointerId !== active.id) return;
     e.preventDefault();
-    const p = point(e);
+    // a cancelled touch has no position worth trusting, so it ends where it last was
+    const p = e.type === 'pointercancel' ? active.last : point(e);
     const { dragging } = active;
     active = null;
     if (dragging) handlers.onDrop?.(p.x, p.y);

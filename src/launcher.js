@@ -49,9 +49,11 @@ export function launcherButtons(width, height, allGames, page = 0) {
   const count = paged ? PAGE_SIZE : games.length + (games.length % cols ? 1 : 0);
   const rows = Math.ceil(count / cols);
   const edge = paged ? Math.max(12, height * 0.02) : Math.max(16, height * 0.03);
-  const navH = paged ? Math.max(40, height * 0.045) : 0;
+  const navH = paged ? Math.max(44, height * 0.05) : 0;
+  // the arrows stay clear of the strip along the bottom edge that iOS keeps for its home gesture
+  const foot = paged ? Math.max(34, height * 0.035) : 0;
   const top = height * (paged ? 0.3 : rows > 2 ? 0.32 : 0.36);
-  const bottom = height - edge - navH - (paged ? 10 : 0); // clear of the cards' borders
+  const bottom = paged ? height - foot - navH - 14 : height - edge;
   const gap = Math.max(16, width * (cols > 2 ? 0.04 : 0.05));
   const labelH = paged ? Math.max(30, height * 0.04) : Math.max(32, height * 0.045);
   const maxW = (width - gap * (cols + 1)) / cols;
@@ -71,8 +73,8 @@ export function launcherButtons(width, height, allGames, page = 0) {
   if (count > games.length) buttons.push({ id: 'soon', ...rect(games.length) });
   if (paged) {
     const cur = first / PAGE_SIZE;
-    const ny = height - edge * 0.6 - navH;
-    const aw = navH * 1.6;
+    const ny = height - foot - navH;
+    const aw = navH * 2;
     const dotsW = Math.max(navH * 1.2, pages * navH * 0.6);
     const nx = (width - dotsW) / 2;
     buttons.push({ id: 'dots', x: nx, y: ny, w: dotsW, h: navH, page: cur, pages });

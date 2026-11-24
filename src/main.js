@@ -47,7 +47,7 @@ function launcherTouch(x0, y0, x, y) {
     turnPage(dx < 0 ? 1 : -1);
     return;
   }
-  const pad = 10; // the arrows are small, so they take near misses too
+  const pad = 16; // the arrows are small, so they take near misses too
   const b = launcher.buttons.find((r) => {
     const p = r.id === 'prev' || r.id === 'next' ? pad : 0;
     return x >= r.x - p && x <= r.x + r.w + p && y >= r.y - p && y <= r.y + r.h + p;
