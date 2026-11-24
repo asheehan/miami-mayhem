@@ -9,7 +9,7 @@ The thirteenth game in Riley's Miami Mayhem: a 3D chase through pastel Miami. Ri
 - **The crowd** follows the leader's trail, so everyone takes the same ladders and slides the leader did, one after another, and catches up (4.6 units/s against the leader's 3.6) to huddle round the leader. The leader wears a red cap and has a yellow ring.
 - **Friends** stand waving inside a white ring, on the street or on roofs. Any crowd member coming within 1.7 on the same level picks them up (+1).
 - **Climbing is automatic.** Running into a ladder, fire escape, stack of crates or a climbable palm takes the crowd up (about 1 s); running off a roof edge at one of them climbs back down. Trampolines under awnings (BOING!) go up only; slides (WHEE!) and zip lines (ZOOM!) go down only. Running off a roof edge where another roof touches or nearly touches (a gap of up to 2.2, marked with yellow arrows) hops across (HOP!). Walking along a wall past a ladder doesn't climb it: you have to push into it. A ladder takes one person every 0.2 s, so the crowd visibly streams up it; whoever is still waiting at the bottom is a straggler.
-- **Robbers** can't climb. They chase the nearest crowd member on the street (round buildings, by path finding on a 0.5-unit grid), at 1.8 units/s on level 1 rising to 2.9 on level 9. Some chase from the start; others wait at a post until someone comes within sight (8–9 units). When everyone is up on the roofs they stop, look round with a "?", and wander back to their posts.
+- **Robbers** can't climb. They chase the nearest crowd member on the street (round buildings, by path finding on a 0.5-unit grid), at 1.8 units/s on level 1 rising to 3.1 on level 9. Some chase from the start; others wait at a post until someone comes within sight (8–9 units). When everyone is up on the roofs they stop, look round with a "?", and wander back to their posts.
 - **Bonk:** a robber touching someone on the street (or low on a ladder) pops them into the sack with a puff, then carries them off, slowly, to the nearest open manhole, where that friend is lost. A robber carries one at a time. **Rescue:** the leader running into a robber with a full sack sets the friend free (YAY!) and leaves the robber dizzy for 2.6 s. The leader has to be moving, so a crowd standing still doesn't rescue anyone.
 - **Losing the leader** isn't the end: whoever is furthest along the trail takes the cap. The level is lost only when nobody is left in the crowd: "Oh no!" with **Try again** and **Menu**.
 - **The getaway** is an ice cream truck, a police station or a ferry at the end of a dock, with a bobbing green arrow over a checked pad (and a green arrow at the screen edge when it is off screen). The leader stepping onto the pad wins, and everyone still in the crowd counts as saved, even stragglers still on a ladder. They run aboard; after 1.6 s the win screen shows the stars and a row of the people saved, with **Next** and **Again**.
@@ -23,14 +23,14 @@ The thirteenth game in Riley's Miami Mayhem: a 3D chase through pastel Miami. Ri
 | # | Name | New thing | People | Robbers | Getaway |
 |---|---|---|---|---|---|
 | 1 | Run! | running and friends | 12 | 1 slow chaser | ice cream truck |
-| 2 | Up the ladder | ladder (with hint) and a slide; four friends on the roof | 14 | 2 | police |
-| 3 | Roof hop | three roofs in a row with gaps | 15 | 3 | ferry |
-| 4 | Boing! | trampoline; a wall of buildings across the street | 17 | 3 | ice cream truck |
-| 5 | Palm beach | climbable palms, beach on the east | 17 | 3 | ferry |
-| 6 | Zip line! | fire escape up a tall tower, zip line over a plaza | 18 | 4 | police |
-| 7 | Fire escape | a chain of four roofs, robbers waiting ahead | 22 | 5 | ice cream truck |
-| 8 | Neon nights | crate stairs, roofs stepping up, a long zip line | 26 | 6 | ferry |
-| 9 | Big getaway | everything | 30 | 7 | police |
+| 2 | Up the ladder | ladder (with hint) and a slide; four friends on the roof | 16 | 3 | police |
+| 3 | Roof hop | three roofs in a row with gaps | 17 | 4 | ferry |
+| 4 | Boing! | trampoline; a wall of buildings across the street | 19 | 4 | ice cream truck |
+| 5 | Palm beach | climbable palms, beach on the east | 19 | 5 | ferry |
+| 6 | Zip line! | fire escape up a tall tower, zip line over a plaza | 21 | 6 | police |
+| 7 | Fire escape | a chain of four roofs, robbers waiting ahead | 25 | 7 | ice cream truck |
+| 8 | Neon nights | crate stairs, roofs stepping up, a long zip line | 28 | 9 | ferry |
+| 9 | Big getaway | everything | 30 | 10 | police |
 
 The bot (collecting every friend, then the getaway) takes about 17 s on level 1 and 100 s on level 9; a young player steering less directly takes roughly twice that.
 
