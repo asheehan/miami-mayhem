@@ -1,10 +1,10 @@
 // Mural Maker rules. Pure: no DOM, no drawing. Paints, compiling a mural's line art into
-// hit-testable regions, filling, spray strokes, stamps, undo, clear, completion, and saved
+// hit-testable regions, filling, spray strokes, stamps, undo, clear, finishing, and saved
 // progress (storage passed in).
 //
 // Units: everything on a wall is in wall units. The wall is WALL_W x WALL_H (3:4 portrait);
 // the screen layout scales it to fit.
-import { flatten, bbox, winding, polyArea, reverse } from './murals/kit.js';
+import { flatten, bbox, winding, polyArea, reverse, R, rect } from './murals/kit.js';
 import { STAMP_IDS } from './stamps.js';
 
 export const WALL_W = 600;
@@ -177,95 +177,24 @@ const pushHistory = (wall, h) => {
   if (wall.history.length > HISTORY_MAX) wall.history.shift();
 };
 
-// A region counts as coloured when it was filled, or when spray paint covers most of it.
-export const isColoured = (wall, i) => !!(wall.fills[i] || (wall.sprayed && wall.sprayed[i]));
-export const isComplete = (wall) => wall.fills.length > 0 && wall.fills.every((_, i) => isColoured(wall, i));
-// The regions still waiting for colour.
-export const blankRegions = (wall) => wall.fills.map((_, i) => i).filter((i) => !isColoured(wall, i));
-
-const GRID = 12; // spray cover is measured on a grid this coarse (wall units)
-export const SPRAY_COVER = 0.7; // this share of a region under spray counts as coloured
-
-// Which region shows at each grid cell, worked out once per mural.
-function muralGrid(m) {
-  if (m.grid) return m.grid;
-  const cols = Math.ceil(WALL_W / GRID);
-  const rows = Math.ceil(WALL_H / GRID);
-  const owner = new Int16Array(cols * rows);
-  const totals = m.regions.map(() => 0);
-  for (let gy = 0; gy < rows; gy++) {
-    for (let gx = 0; gx < cols; gx++) {
-      const i = regionAt(m, (gx + 0.5) * GRID, (gy + 0.5) * GRID);
-      owner[gy * cols + gx] = i;
-      if (i >= 0) totals[i]++;
-    }
-  }
-  m.grid = { cols, rows, owner, totals };
-  return m.grid;
+// A mural is finished when Riley says so: the Done button calls finishWall. Free walls
+// (and his own walls) are never finished, and a blank wall has nothing to finish. Returns
+// true the first time a wall is finished, false after that (the celebration can replay).
+export function finishWall(wall) {
+  if (wall.free || isBlank(wall) || wall.done) return false;
+  wall.done = true;
+  return true;
 }
 
-// For each region, whether the wall's spray strokes cover most of what shows of it.
-export function sprayedRegions(m, wall) {
-  const { cols, rows, owner, totals } = muralGrid(m);
-  const strokes = wall.marks.filter((k) => k.t === 's');
-  if (!strokes.length) return totals.map(() => false);
-  const hit = new Uint8Array(cols * rows);
-  for (const k of strokes) {
-    const rad = (BRUSHES[k.w] ?? BRUSHES[1]) * 0.5;
-    const q = k.q;
-    for (let n = 0; n < q.length; n += 2) {
-      const ax = q[n];
-      const ay = q[n + 1];
-      const bx = n + 2 < q.length ? q[n + 2] : ax;
-      const by = n + 2 < q.length ? q[n + 3] : ay;
-      const x0 = Math.max(0, Math.floor((Math.min(ax, bx) - rad) / GRID));
-      const x1 = Math.min(cols - 1, Math.floor((Math.max(ax, bx) + rad) / GRID));
-      const y0 = Math.max(0, Math.floor((Math.min(ay, by) - rad) / GRID));
-      const y1 = Math.min(rows - 1, Math.floor((Math.max(ay, by) + rad) / GRID));
-      const dx = bx - ax;
-      const dy = by - ay;
-      const len2 = dx * dx + dy * dy;
-      for (let gy = y0; gy <= y1; gy++) {
-        for (let gx = x0; gx <= x1; gx++) {
-          const c = gy * cols + gx;
-          if (hit[c]) continue;
-          const px = (gx + 0.5) * GRID;
-          const py = (gy + 0.5) * GRID;
-          const u = len2 ? Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / len2)) : 0;
-          if (Math.hypot(px - ax - dx * u, py - ay - dy * u) <= rad) hit[c] = 1;
-        }
-      }
-    }
-  }
-  const got = totals.map(() => 0);
-  for (let c = 0; c < hit.length; c++) if (hit[c] && owner[c] >= 0) got[owner[c]]++;
-  return totals.map((t, i) => t > 0 && got[i] >= t * SPRAY_COVER);
-}
-
-// Looks again at what the spray covers (after a stroke, an undo, a clear or a load).
-// Returns true when that is what finished the picture.
-export function checkSpray(m, wall) {
-  if (wall.free) return false;
-  const was = isComplete(wall);
-  wall.sprayed = sprayedRegions(m, wall);
-  const now = isComplete(wall);
-  const completed = now && (!was || !wall.done);
-  if (now) wall.done = true;
-  return completed;
-}
 export const filledCount = (wall) => wall.fills.filter(Boolean).length;
 export const isBlank = (wall) => !wall.marks.length && !wall.fills.some(Boolean);
 
-// Fills region i. Returns { changed, completed } where completed is true when this fill
-// was the one that gave every region colour. A free wall is never 'finished'.
+// Fills region i. Returns { changed }. Filling never finishes a mural by itself.
 export function fillRegion(wall, i, paint) {
-  if (i < 0 || i >= wall.fills.length || !isPaint(paint) || wall.fills[i] === paint) return { changed: false, completed: false };
-  const was = isComplete(wall);
+  if (i < 0 || i >= wall.fills.length || !isPaint(paint) || wall.fills[i] === paint) return { changed: false };
   pushHistory(wall, { t: 'fill', i, prev: wall.fills[i] });
   wall.fills[i] = paint;
-  const completed = !wall.free && !was && isComplete(wall);
-  if (completed) wall.done = true;
-  return { changed: true, completed };
+  return { changed: true };
 }
 
 const clampPt = (x, y) => [
@@ -437,7 +366,8 @@ export function simplify(q, tol) {
 // ---------------------------------------------------------------------------------------------
 //
 // localStorage 'mural-maker-progress':
-//   { v: 1, walls: { [id]: { f: [paint | 0, ...], m: [mark, ...], d: 1 } } }
+//   { v: 1, walls: { [id]: { f: [paint | 0, ...], m: [mark, ...], d: 1 } }, own: { n, ids } }
+// `own` (his own walls, see below) is only there once he has made one.
 // Strokes are { t: 's', p, w, s, r, q } with q the points as [x0, y0, dx1, dy1, ...] whole
 // wall units; stamps are { t: 'm', k, p, x, y, z, a }. Blank, unfinished walls are left out.
 // Each wall is kept under a budget (characters of JSON): over it, strokes are simplified
@@ -497,13 +427,17 @@ export function decodeWall(raw, mural) {
   return wall;
 }
 
-// progress = { walls: { [id]: wall } } with a wall for every mural.
+// progress = { walls: { [id]: wall }, own: { ids, next } } with a wall for every mural and
+// every wall of his own.
 export function serializeProgress(progress, budget = WALL_BUDGET) {
   const walls = {};
   for (const [id, wall] of Object.entries(progress.walls)) {
     if (!isBlank(wall) || wall.done) walls[id] = encodeWall(wall, budget);
   }
-  return JSON.stringify({ v: 1, walls });
+  const out = { v: 1, walls };
+  // saves from before own walls existed stay exactly as they were
+  if (progress.own && progress.own.next > 0) out.own = { n: progress.own.next, ids: progress.own.ids.slice() };
+  return JSON.stringify(out);
 }
 
 export function parseProgress(text, murals) {
@@ -513,10 +447,12 @@ export function parseProgress(text, murals) {
   } catch {
     raw = null;
   }
-  const src = raw && typeof raw === 'object' && raw.walls && typeof raw.walls === 'object' ? raw.walls : {};
+  const src = raw && typeof raw === 'object' && raw.walls && typeof raw.walls === 'object' && !Array.isArray(raw.walls) ? raw.walls : {};
   const walls = {};
   for (const m of murals) walls[m.id] = decodeWall(src[m.id], m);
-  return { walls };
+  const own = parseOwn(raw && typeof raw === 'object' ? raw.own : null);
+  for (const id of own.ids) walls[id] = decodeWall(Object.hasOwn(src, id) ? src[id] : null, ownMural(id));
+  return { walls, own };
 }
 
 export function loadProgress(storage, murals) {
@@ -527,17 +463,115 @@ export function loadProgress(storage, murals) {
   }
 }
 
-// Saves, shrinking the budget if storage says it's full. Returns the number of characters
-// written, or 0 if nothing could be saved (play carries on; the walls stay in memory).
-export function saveProgress(storage, progress) {
-  for (const budget of [WALL_BUDGET, WALL_BUDGET / 4, WALL_BUDGET / 16]) {
-    const text = serializeProgress(progress, budget);
+// Budgets tried in turn when storage says it's full.
+export const SAVE_BUDGETS = [WALL_BUDGET, WALL_BUDGET / 2, WALL_BUDGET / 4, WALL_BUDGET / 8, WALL_BUDGET / 16];
+
+// Saves, shrinking the budget if storage says it's full. Returns { chars, budget }: the
+// characters written and the per-wall budget that fitted, or { chars: 0, budget: 0 } when
+// nothing could be saved (play carries on; the walls stay in memory and whatever was saved
+// before is still there, since a failed write leaves the old value alone).
+export function trySave(storage, progress) {
+  for (const budget of SAVE_BUDGETS) {
+    let text;
     try {
+      text = serializeProgress(progress, budget);
       storage.setItem(SAVE_KEY, text);
-      return text.length;
+      return { chars: text.length, budget };
     } catch {
       // full (or unavailable): try smaller
     }
   }
-  return 0;
+  return { chars: 0, budget: 0 };
+}
+
+// The same, returning just the number of characters written (0 when nothing was saved).
+export function saveProgress(storage, progress) {
+  return trySave(storage, progress).chars;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Walls of his own
+// ---------------------------------------------------------------------------------------------
+//
+// Riley can add as many blank walls as he likes (each a free wall: one big region, never
+// finished) and remove ones he no longer wants. progress.own = { ids, next }: the walls in
+// the order made, and the number the next one gets. Ids are 'own-<n>' and are never reused,
+// so a removed wall's paint can never turn up on a newer one.
+//
+// How many: localStorage gives a site about 5 MB, which some browsers count as UTF-16, so
+// plan on roughly 2.5 million characters, shared with the other games' (small) saves. A
+// painted wall saves at up to WALL_BUDGET (48k) characters, though a typical one is a few
+// thousand. Two limits apply:
+//   OWN_MAX       a hard ceiling. 200 own walls plus the 52 on the mural pages, squeezed to
+//                 the smallest budget (3k each), is about 760k characters, so even then a
+//                 save always fits; at a quarter budget (12k) they would be ~3M, which is why
+//                 the soft limit below stops adding well before that.
+//   SAVE_SOFT_MAX once a save is this big, or had to be squeezed to fit, no more walls are
+//                 added (the '+' shows 'full') so what is already painted keeps its detail.
+//                 Removing walls brings the '+' back.
+
+export const OWN_MAX = 200;
+export const SAVE_SOFT_MAX = 1_800_000;
+const OWN_ID = /^own-(\d{1,9})$/;
+export const isOwnId = (id) => typeof id === 'string' && OWN_ID.test(id);
+
+let ownTemplate = null;
+// The compiled wall for one of his own walls: a free wall, one big region.
+export function ownMural(id) {
+  ownTemplate = ownTemplate || compileMural({ id: 'own', free: true, items: [R(rect(0, 0, WALL_W, WALL_H))] });
+  return { ...ownTemplate, id, def: { ...ownTemplate.def, id }, points: undefined, grid: undefined };
+}
+
+export const emptyOwn = () => ({ ids: [], next: 0 });
+
+// Reads the own-walls list from a save, ignoring anything that doesn't look right.
+export function parseOwn(raw) {
+  const own = emptyOwn();
+  if (!raw || typeof raw !== 'object') return own;
+  let top = -1;
+  if (Array.isArray(raw.ids)) {
+    const seen = new Set();
+    for (const id of raw.ids) {
+      if (!isOwnId(id) || seen.has(id)) continue;
+      if (own.ids.length >= OWN_MAX) break;
+      seen.add(id);
+      own.ids.push(id);
+      top = Math.max(top, Number(OWN_ID.exec(id)[1]));
+    }
+  }
+  const n = Number.isInteger(raw.n) && raw.n >= 0 && raw.n < 1e9 ? raw.n : 0;
+  own.next = Math.max(n, top + 1);
+  return own;
+}
+
+// Whether another wall can be added. `lastSave` is what trySave returned last time (or
+// null before the first save): a save that failed, had to be squeezed, or is already big
+// means storage is filling up.
+export function canAddWall(progress, lastSave = null) {
+  const own = progress.own || emptyOwn();
+  if (own.ids.length >= OWN_MAX || own.next >= 1e9) return false;
+  if (lastSave && (lastSave.budget !== WALL_BUDGET || lastSave.chars > SAVE_SOFT_MAX)) return false;
+  return true;
+}
+
+// Adds a new blank wall at the end. Returns its id, or null when there's no room.
+export function addOwnWall(progress, lastSave = null) {
+  if (!progress.own) progress.own = emptyOwn();
+  if (!canAddWall(progress, lastSave)) return null;
+  const id = `own-${progress.own.next++}`;
+  progress.own.ids.push(id);
+  progress.walls[id] = createWall(ownMural(id));
+  return id;
+}
+
+// Removes one of his walls for good. Returns where it was in the list, or -1 (murals and
+// the four free walls can't be removed).
+export function removeOwnWall(progress, id) {
+  const own = progress.own;
+  if (!own || !isOwnId(id)) return -1;
+  const i = own.ids.indexOf(id);
+  if (i < 0) return -1;
+  own.ids.splice(i, 1);
+  delete progress.walls[id];
+  return i;
 }

@@ -37,11 +37,24 @@ import kitty from './kitty.js';
 import cupcake from './cupcake.js';
 import castle from './castle.js';
 import submarine from './submarine.js';
+import narwhal from './narwhal.js';
+import whale from './whale.js';
+import penguin from './penguin.js';
+import lion from './lion.js';
+import sloth from './sloth.js';
+import owl from './owl.js';
+import train from './train.js';
+import airplane from './airplane.js';
+import helicopter from './helicopter.js';
+import garbageTruck from './garbage-truck.js';
+import tractor from './tractor.js';
+import donut from './donut.js';
 
 export const MURAL_DEFS = [
   flamingo, gator, parrot, palmSunset, rocket, octopus, iceCream, dolphin, robot, dino, lighthouse, riley,
   shark, seaTurtle, pirateShip, mermaid, crab, sandcastle, monsterTruck, raceCar, unicorn, dragon, astronaut, pizza,
   manatee, toucan, lifeguardTower, hotAirBalloon, fireTruck, digger, butterfly, puppy, kitty, cupcake, castle, submarine,
+  narwhal, whale, penguin, lion, sloth, owl, train, airplane, helicopter, garbageTruck, tractor, donut,
 ];
 
 // A free wall is one big region (the wall itself, so the bucket paints the background).

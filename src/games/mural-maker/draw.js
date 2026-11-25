@@ -504,16 +504,6 @@ export function drawTwinkles(g, m, fills, time) {
   g.globalAlpha = 1;
 }
 
-// A gold sparkle that pulses over a spot still waiting for colour.
-export function drawHint(g, x, y, time) {
-  const a = 0.5 + 0.5 * Math.sin(time * 4);
-  g.save();
-  g.globalAlpha = 0.55 + 0.45 * a;
-  sparkle(g, x, y, 15 + 7 * a, '#1f1440');
-  sparkle(g, x, y, 11 + 6 * a, '#ffd23f');
-  g.restore();
-}
-
 // The wink: an eyelid the colour of the face closes over the eye and opens again.
 export function drawWink(g, w, amount, lidPaint) {
   if (amount <= 0) return;
@@ -633,11 +623,13 @@ export function renderWallImage(m, wall, pw, lineCache) {
   renderPaint(paint.getContext('2d'), wall.marks, k);
   g.setTransform(1, 0, 0, 1, 0, 0);
   g.drawImage(paint, 0, 0);
-  let lines = lineCache?.get(`${m.id}|${pw}`);
+  // every free wall has the same bricks, so they share one line layer per size
+  const key = `${m.free ? '(free)' : m.id}|${pw}`;
+  let lines = lineCache?.get(key);
   if (!lines) {
     lines = makeCanvas(pw, ph);
     renderLines(lines.getContext("2d"), m, k);
-    lineCache?.set(`${m.id}|${pw}`, lines);
+    lineCache?.set(key, lines);
   }
   g.drawImage(lines, 0, 0);
   return out;
@@ -710,21 +702,105 @@ export function drawArrow(ctx, b, dir, time = 0) {
   ctx.stroke();
 }
 
-// Page dots: one per page, the current one big and bright.
-export function drawDots(ctx, b, page, pages, time = 0) {
-  for (let i = 0; i < pages; i++) {
+// Page dots, the current one big and bright. With more pages than fit, `win` = { first,
+// count } says which pages get a dot; an end dot with more pages beyond it is drawn small.
+// Pages from `ownFrom` on (his own walls) get little square dots instead of round ones.
+export function drawDots(ctx, b, page, pages, time = 0, win = null, ownFrom = Infinity) {
+  const first = win ? win.first : 0;
+  const count = win ? win.count : pages;
+  for (let k = 0; k < count; k++) {
+    const i = first + k;
     const on = i === page;
-    const cx = b.x + ((i + 0.5) / pages) * b.w;
+    const more = (k === 0 && first > 0) || (k === count - 1 && first + count < pages);
+    const cx = b.x + ((k + 0.5) / count) * b.w;
     const cy = b.y + b.h / 2;
-    const r = b.h * (on ? 0.2 + Math.sin(time * 3) * 0.01 : 0.13);
+    const r = b.h * (on ? 0.2 + Math.sin(time * 3) * 0.01 : more ? 0.08 : 0.13);
     ctx.beginPath();
-    ctx.arc(cx, cy, r, 0, TAU);
+    if (i >= ownFrom) roundRect(ctx, cx - r * 0.9, cy - r * 0.9, r * 1.8, r * 1.8, r * 0.4);
+    else ctx.arc(cx, cy, r, 0, TAU);
     ctx.fillStyle = on ? C.sun : 'rgba(255,255,255,0.55)';
     ctx.fill();
     ctx.lineWidth = on ? 3 : 2;
     ctx.strokeStyle = C.ink;
     ctx.stroke();
   }
+}
+
+// The '+' tile on his own walls' pages: a dashed empty wall with a big plus. When there's
+// no room for more, it's grey with a little 'full' sign.
+export function drawAddTile(ctx, b, full, time = 0) {
+  const r = b.w * 0.12;
+  ctx.save();
+  ctx.fillStyle = full ? 'rgba(60,50,80,0.45)' : 'rgba(255,255,255,0.28)';
+  roundRect(ctx, b.x, b.y, b.w, b.h, r);
+  ctx.fill();
+  ctx.setLineDash([b.w * 0.07, b.w * 0.05]);
+  ctx.lineWidth = Math.max(3, b.w * 0.035);
+  ctx.strokeStyle = full ? 'rgba(255,255,255,0.45)' : C.white;
+  ctx.stroke();
+  ctx.setLineDash([]);
+  const bob = full ? 0 : Math.sin(time * 3) * b.w * 0.025;
+  const s = b.w * 0.68;
+  const t = s * 0.32;
+  const cx = b.x + b.w / 2;
+  const cy = b.y + b.h / 2 + bob;
+  ctx.beginPath();
+  ctx.moveTo(cx - t / 2, cy - s / 2);
+  ctx.lineTo(cx + t / 2, cy - s / 2);
+  ctx.lineTo(cx + t / 2, cy - t / 2);
+  ctx.lineTo(cx + s / 2, cy - t / 2);
+  ctx.lineTo(cx + s / 2, cy + t / 2);
+  ctx.lineTo(cx + t / 2, cy + t / 2);
+  ctx.lineTo(cx + t / 2, cy + s / 2);
+  ctx.lineTo(cx - t / 2, cy + s / 2);
+  ctx.lineTo(cx - t / 2, cy + t / 2);
+  ctx.lineTo(cx - s / 2, cy + t / 2);
+  ctx.lineTo(cx - s / 2, cy - t / 2);
+  ctx.lineTo(cx - t / 2, cy - t / 2);
+  ctx.closePath();
+  ctx.fillStyle = full ? '#9a93a8' : C.sun;
+  ctx.fill();
+  ctx.lineJoin = 'round';
+  ctx.lineWidth = Math.max(3, b.w * 0.04);
+  ctx.strokeStyle = C.ink;
+  ctx.stroke();
+  if (full) {
+    // a little red 'full' sign across the bottom corner
+    const fw = b.w * 0.72;
+    const fh = Math.max(18, b.w * 0.24);
+    const fx = cx - fw / 2;
+    const fy = b.y + b.h - fh - b.h * 0.06;
+    ctx.fillStyle = '#ff4d6d';
+    roundRect(ctx, fx, fy, fw, fh, fh * 0.35);
+    ctx.fill();
+    ctx.lineWidth = 2.5;
+    ctx.strokeStyle = C.ink;
+    ctx.stroke();
+    ctx.font = font(fh * 0.7);
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = C.white;
+    ctx.fillText('full', cx, fy + fh * 0.54, fw * 0.9);
+  }
+  ctx.restore();
+}
+
+// A big red cross over a box (the wall that will be taken away).
+export function drawBigCross(ctx, x, y, w, h) {
+  const m = Math.min(w, h) * 0.12;
+  ctx.save();
+  ctx.lineCap = 'round';
+  for (const [lw, col] of [[Math.min(w, h) * 0.2, C.ink], [Math.min(w, h) * 0.13, '#ff3347']]) {
+    ctx.lineWidth = lw;
+    ctx.strokeStyle = col;
+    ctx.beginPath();
+    ctx.moveTo(x + m, y + m);
+    ctx.lineTo(x + w - m, y + h - m);
+    ctx.moveTo(x + w - m, y + m);
+    ctx.lineTo(x + m, y + h - m);
+    ctx.stroke();
+  }
+  ctx.restore();
 }
 
 // Icons, drawn inside a box of size s centred on (cx, cy).

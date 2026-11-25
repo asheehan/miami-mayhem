@@ -4,11 +4,15 @@ import { STAMPS, STAMP_IDS } from '../src/games/mural-maker/stamps.js';
 import { R, rect, circle, flatten, polyArea, svg, clip, tf, reverse } from '../src/games/mural-maker/murals/kit.js';
 import {
   WALL_W, WALL_H, SWATCHES, COLOURS, isPaint, paintFor, paintInfo, compileMural, regionAt, regionPoint, insideRegion,
-  createWall, fillRegion, isComplete, startStroke, extendStroke, endStroke, addStamp, resizeStamp, undo, clearWall,
+  createWall, fillRegion, startStroke, extendStroke, endStroke, addStamp, resizeStamp, undo, clearWall, isBlank,
   dripsFor, simplify, encodeWall, decodeWall, serializeProgress, parseProgress, loadProgress, saveProgress, SAVE_KEY,
-  WALL_BUDGET, MAX_POINTS, STAMP_MIN, STAMP_MAX, STAMP_SIZE, HISTORY_MAX, checkSpray, blankRegions,
+  WALL_BUDGET, MAX_POINTS, STAMP_MIN, STAMP_MAX, STAMP_SIZE, HISTORY_MAX, finishWall, trySave, SAVE_BUDGETS,
+  OWN_MAX, SAVE_SOFT_MAX, isOwnId, ownMural, parseOwn, canAddWall, addOwnWall, removeOwnWall,
 } from '../src/games/mural-maker/mural.js';
-import { PER_PAGE, STREET_COLS, pageCount, pageOf, slotWall, swipeTurn, isTapMove, streetLayout } from '../src/games/mural-maker/index.js';
+import {
+  PER_PAGE, STREET_COLS, pageCount, pageOf, slotWall, swipeTurn, isTapMove, streetLayout, OWN_PER_PAGE, ownPageCount,
+  streetPages, isOwnPage, ownPageOf, streetSlot, addSpot, dotWindow, MAX_DOTS,
+} from '../src/games/mural-maker/index.js';
 
 const MURALS = MURAL_DEFS.map(compileMural);
 const ALL = WALL_DEFS.map(compileMural);
@@ -27,8 +31,8 @@ function scribble(wall, n, { paint = '3', size = 1, seed = 5, drip = false, x0 =
 }
 
 describe('the murals', () => {
-  it('has three pages of twelve murals and four free walls, all with unique ids', () => {
-    expect(MURAL_DEFS.length).toBe(36);
+  it('has four pages of twelve murals and four free walls, all with unique ids', () => {
+    expect(MURAL_DEFS.length).toBe(48);
     expect(MURAL_DEFS.length % PER_PAGE).toBe(0);
     expect(FREE_DEFS.length).toBe(4);
     const ids = WALL_DEFS.map((d) => d.id);
@@ -37,6 +41,7 @@ describe('the murals', () => {
       'flamingo', 'gator', 'parrot', 'palm-sunset', 'rocket', 'octopus', 'ice-cream', 'dolphin', 'robot', 'dino', 'lighthouse', 'riley',
       'shark', 'sea-turtle', 'pirate-ship', 'mermaid', 'crab', 'sandcastle', 'monster-truck', 'race-car', 'unicorn', 'dragon', 'astronaut', 'pizza',
       'manatee', 'toucan', 'lifeguard-tower', 'hot-air-balloon', 'fire-truck', 'digger', 'butterfly', 'puppy', 'kitty', 'cupcake', 'castle', 'submarine',
+      'narwhal', 'whale', 'penguin', 'lion', 'sloth', 'owl', 'train', 'airplane', 'helicopter', 'garbage-truck', 'tractor', 'donut',
     ]) {
       expect(ids).toContain(id);
     }
@@ -182,7 +187,7 @@ describe('filling, undo and clear', () => {
 
   it('fills a region, ignores a repeat, and undoes back to blank', () => {
     const w = createWall(m);
-    expect(fillRegion(w, 2, '4')).toEqual({ changed: true, completed: false });
+    expect(fillRegion(w, 2, '4')).toEqual({ changed: true });
     expect(fillRegion(w, 2, '4').changed).toBe(false);
     fillRegion(w, 2, 'r');
     expect(w.fills[2]).toBe('r');
@@ -195,7 +200,9 @@ describe('filling, undo and clear', () => {
 
   it('never finishes a free wall, however it is painted', () => {
     const w = createWall(compileMural(FREE_DEFS[0]));
-    expect(fillRegion(w, 0, '5')).toEqual({ changed: true, completed: false });
+    expect(fillRegion(w, 0, '5')).toEqual({ changed: true });
+    expect(w.done).toBe(false);
+    expect(finishWall(w)).toBe(false);
     expect(w.done).toBe(false);
   });
 
@@ -206,22 +213,40 @@ describe('filling, undo and clear', () => {
     expect(fillRegion(w, 0, 'purple').changed).toBe(false);
   });
 
-  it('knows when every region has colour, exactly once, and keeps the sticker', () => {
+  it('never finishes a mural by filling it, however much is coloured', () => {
     for (const mm of MURALS) {
       const w = createWall(mm);
-      let completions = 0;
-      mm.regions.forEach((r, i) => {
-        expect(isComplete(w)).toBe(false);
-        if (fillRegion(w, i, SWATCHES[i % SWATCHES.length] === 's' ? 's1' : SWATCHES[i % SWATCHES.length] === 'd' ? 'd2' : SWATCHES[i % SWATCHES.length]).completed) completions++;
-      });
-      expect(isComplete(w), mm.id).toBe(true);
-      expect(completions).toBe(1);
-      expect(w.done).toBe(true);
-      // recolouring a finished mural is not a new completion
-      expect(fillRegion(w, 0, '11').completed).toBe(false);
-      clearWall(w);
-      expect(isComplete(w)).toBe(false);
-      expect(w.done).toBe(true);
+      mm.regions.forEach((r, i) => expect(fillRegion(w, i, String(i % 12))).toEqual({ changed: true }));
+      expect(w.done, mm.id).toBe(false);
+    }
+  });
+
+  it('finishes a mural when Done is pressed: once, not when blank, and the star survives clear and save', () => {
+    const w = createWall(m);
+    expect(finishWall(w)).toBe(false); // blank: nothing to finish
+    expect(w.done).toBe(false);
+    fillRegion(w, 1, '3');
+    expect(finishWall(w)).toBe(true);
+    expect(w.done).toBe(true);
+    expect(finishWall(w)).toBe(false); // again: no second star
+    expect(w.done).toBe(true);
+    clearWall(w);
+    expect(w.done).toBe(true);
+    // a spray stroke alone is enough to say done
+    const s2 = createWall(m);
+    scribble(s2, 5);
+    expect(finishWall(s2)).toBe(true);
+    // round trip
+    const p = parseProgress(null, ALL);
+    p.walls.flamingo = w;
+    const back = parseProgress(serializeProgress(p), ALL);
+    expect(back.walls.flamingo.done).toBe(true);
+    // free walls and his own walls never finish
+    for (const fm of [compileMural(FREE_DEFS[0]), ownMural('own-3')]) {
+      const fw = createWall(fm);
+      fillRegion(fw, 0, '2');
+      expect(finishWall(fw)).toBe(false);
+      expect(fw.done).toBe(false);
     }
   });
 
@@ -364,6 +389,7 @@ describe('saved progress', () => {
     const rm = ALL.find((m) => m.id === 'rocket');
     rm.regions.forEach((_, i) => fillRegion(rocket, i, i % 2 ? 'g' : 's5'));
     scribble(rocket, 30, { paint: 'r', size: 2, seed: 77 });
+    finishWall(rocket);
     const free = p.walls.free2;
     scribble(free, 40, { paint: 'd3', drip: true, seed: 12 });
     addStamp(free, { kind: 'heart', x: 100, y: 120, size: 260, paint: '8', seed: 2 });
@@ -434,70 +460,6 @@ describe('saved progress', () => {
     const w = parseProgress(raw, ALL).walls.flamingo;
     expect(w.fills.slice(0, 3)).toEqual(['1', null, null]);
     expect(w.marks).toEqual([{ t: 'm', k: 'star', p: '1', x: 1, y: 1, z: STAMP_MAX, a: 3 }]);
-  });
-});
-
-describe('spray paint counts as colouring in', () => {
-  // sprays the whole wall with the big can, row by row
-  const sprayAll = (w, gap = 40) => {
-    for (let y = 0; y <= WALL_H; y += gap) {
-      startStroke(w, { paint: '1', size: 2, x: 0, y });
-      extendStroke(w, WALL_W, y);
-      endStroke(w);
-    }
-  };
-
-  it('a mural sprayed all over is finished and gets its star, once', () => {
-    for (const mm of MURALS) {
-      const w = createWall(mm);
-      expect(checkSpray(mm, w)).toBe(false);
-      sprayAll(w);
-      expect(checkSpray(mm, w), mm.id).toBe(true);
-      expect(isComplete(w)).toBe(true);
-      expect(w.done).toBe(true);
-      expect(checkSpray(mm, w)).toBe(false);
-    }
-  });
-
-  it('fills and spray add up, and a scribble is not enough', () => {
-    const mm = MURALS[0];
-    const w = createWall(mm);
-    startStroke(w, { paint: '1', size: 0, x: 10, y: 10 });
-    extendStroke(w, 590, 790);
-    endStroke(w);
-    expect(checkSpray(mm, w)).toBe(false);
-    expect(blankRegions(w).length).toBe(mm.regions.length);
-    // fill all but the sky, then spray the lot
-    let done = 0;
-    mm.regions.forEach((r, i) => {
-      if (i > 0 && fillRegion(w, i, '2').completed) done++;
-    });
-    expect(done).toBe(0);
-    expect(blankRegions(w)).toEqual([0]);
-    sprayAll(w);
-    expect(checkSpray(mm, w)).toBe(true);
-    // undoing the spray leaves the sky blank again, but the star stays
-    while (w.marks.length) undo(w);
-    checkSpray(mm, w);
-    expect(isComplete(w)).toBe(false);
-    expect(w.done).toBe(true);
-  });
-
-  it('a saved wall that was sprayed full earns its star when looked at again', () => {
-    const mm = MURALS[0];
-    const w = createWall(mm);
-    sprayAll(w);
-    const back = decodeWall(JSON.parse(JSON.stringify(encodeWall(w))), mm);
-    expect(back.done).toBe(false);
-    expect(checkSpray(mm, back)).toBe(true);
-  });
-
-  it('free walls never finish', () => {
-    const fm = compileMural(FREE_DEFS[0]);
-    const w = createWall(fm);
-    sprayAll(w);
-    expect(checkSpray(fm, w)).toBe(false);
-    expect(w.done).toBe(false);
   });
 });
 
@@ -580,6 +542,235 @@ describe('the street, a page at a time', () => {
       }
       expect(Math.max(...L.slots.map((s) => s.row))).toBe(PER_PAGE / STREET_COLS);
       expect(L.slots.slice(PER_PAGE).every((s) => s.row === PER_PAGE / STREET_COLS)).toBe(true);
+    }
+  });
+});
+
+describe('walls of his own', () => {
+  const fresh = () => parseProgress(null, ALL);
+
+  it('starts with none, and adds blank free walls in order with fresh ids', () => {
+    const p = fresh();
+    expect(p.own).toEqual({ ids: [], next: 0 });
+    const a = addOwnWall(p);
+    const b = addOwnWall(p);
+    expect([a, b]).toEqual(['own-0', 'own-1']);
+    expect(p.own.ids).toEqual(['own-0', 'own-1']);
+    const w = p.walls[a];
+    expect(w.free).toBe(true);
+    expect(w.fills).toEqual([null]);
+    expect(isBlank(w)).toBe(true);
+    // one big region covering the wall, like the free walls
+    const m = ownMural(a);
+    expect(m.free).toBe(true);
+    expect(m.regions.length).toBe(1);
+    expect(regionAt(m, 5, 5)).toBe(0);
+    expect(regionAt(m, WALL_W - 5, WALL_H - 5)).toBe(0);
+    // drips work on them
+    const mk = scribble(w, 40, { drip: true, seed: 3 });
+    expect(dripsFor(mk).length).toBeGreaterThan(0);
+  });
+
+  it('removes a wall, shifts the rest up, and never reuses an id', () => {
+    const p = fresh();
+    for (let k = 0; k < 4; k++) addOwnWall(p);
+    expect(removeOwnWall(p, 'own-1')).toBe(1);
+    expect(p.own.ids).toEqual(['own-0', 'own-2', 'own-3']);
+    expect(p.walls['own-1']).toBeUndefined();
+    expect(removeOwnWall(p, 'own-3')).toBe(2);
+    expect(addOwnWall(p)).toBe('own-4'); // not own-3 again
+    expect(p.own.ids).toEqual(['own-0', 'own-2', 'own-4']);
+    // murals, the free walls and unknown ids can't be removed
+    for (const id of ['flamingo', 'free1', 'own-99', 'nope', null]) expect(removeOwnWall(p, id)).toBe(-1);
+    expect(p.walls.flamingo).toBeTruthy();
+    expect(p.walls.free1).toBeTruthy();
+    // and the counter survives a save, even after the newest wall is removed
+    removeOwnWall(p, 'own-4');
+    const back = parseProgress(serializeProgress(p), ALL);
+    expect(back.own).toEqual({ ids: ['own-0', 'own-2'], next: 5 });
+    expect(addOwnWall(back)).toBe('own-5');
+  });
+
+  it('round-trips his walls, painted and blank, in order', () => {
+    const store = memStore();
+    const p = fresh();
+    const ids = [addOwnWall(p), addOwnWall(p), addOwnWall(p)];
+    scribble(p.walls[ids[0]], 30, { paint: 'r', drip: true, seed: 4 });
+    fillRegion(p.walls[ids[2]], 0, 'd5');
+    addStamp(p.walls[ids[2]], { kind: 'star', x: 200, y: 300, paint: '1', seed: 7 });
+    expect(saveProgress(store, p)).toBeGreaterThan(0);
+    const back = loadProgress(store, ALL);
+    expect(back.own.ids).toEqual(ids);
+    expect(back.walls[ids[0]].marks).toEqual(p.walls[ids[0]].marks);
+    expect(isBlank(back.walls[ids[1]])).toBe(true);
+    expect(back.walls[ids[2]].fills).toEqual(['d5']);
+    expect(back.walls[ids[2]].marks.length).toBe(1);
+    // blank walls are listed but cost nothing more
+    expect(Object.keys(JSON.parse(store.data[SAVE_KEY]).walls).sort()).toEqual([ids[0], ids[2]].sort());
+  });
+
+  it('loads an old save (from before own walls) unchanged, and writes it back the same', () => {
+    const p = fresh();
+    scribble(p.walls.free2, 20, { seed: 2 });
+    fillRegion(p.walls.rocket, 0, '4');
+    delete p.own; // as the old game had it
+    const oldText = serializeProgress(p);
+    expect(JSON.parse(oldText).own).toBeUndefined();
+    const back = parseProgress(oldText, ALL);
+    expect(back.own).toEqual({ ids: [], next: 0 });
+    expect(back.walls.free2.marks).toEqual(p.walls.free2.marks);
+    expect(back.walls.rocket.fills[0]).toBe('4');
+    expect(serializeProgress(back)).toBe(oldText);
+  });
+
+  it('ignores garbage in the own-walls part of a save', () => {
+    const walls = { 'own-2': { f: ['3'], m: [] }, 'own-9': { f: ['4'], m: [] }, 'own-x': { f: ['1'] } };
+    for (const own of [null, 5, 'x', [], { ids: 'no' }, { ids: [1, null, {}, 'flamingo', 'own-', 'own-1.5', 'own--1', 'OWN-1', 'own-12345678901'] }]) {
+      const p = parseProgress(JSON.stringify({ v: 1, walls, own }), ALL);
+      expect(p.own.ids, JSON.stringify(own)).toEqual([]);
+      expect(p.walls['own-2']).toBeUndefined();
+      expect(p.walls.flamingo).toBeTruthy();
+    }
+    const p = parseProgress(JSON.stringify({ v: 1, walls: { ...walls, 'own-3': 'junk' }, own: { n: 'lots', ids: ['own-2', 'own-2', 'own-3', 7, 'own-9'] } }), ALL);
+    expect(p.own.ids).toEqual(['own-2', 'own-3', 'own-9']); // duplicates and junk dropped
+    expect(p.own.next).toBe(10); // past every id seen, whatever n said
+    expect(p.walls['own-2'].fills).toEqual(['3']);
+    expect(isBlank(p.walls['own-3'])).toBe(true);
+    expect(parseOwn({ n: 3, ids: ['own-7'] }).next).toBe(8);
+    expect(parseOwn({ n: 20, ids: ['own-7'] }).next).toBe(20);
+    // a list longer than the ceiling is cut at it
+    const many = Array.from({ length: OWN_MAX + 30 }, (_, k) => `own-${k}`);
+    expect(parseOwn({ n: 0, ids: many }).ids.length).toBe(OWN_MAX);
+    expect(isOwnId('own-0')).toBe(true);
+    expect(isOwnId('free1')).toBe(false);
+  });
+
+  it('stops adding at the ceiling, or when storage is filling up, and starts again after a removal', () => {
+    const p = fresh();
+    for (let k = 0; k < OWN_MAX; k++) expect(addOwnWall(p)).toBeTruthy();
+    expect(canAddWall(p)).toBe(false);
+    expect(addOwnWall(p)).toBe(null);
+    expect(p.own.ids.length).toBe(OWN_MAX);
+    removeOwnWall(p, 'own-5');
+    expect(canAddWall(p)).toBe(true);
+    expect(addOwnWall(p)).toBe(`own-${OWN_MAX}`);
+    // storage
+    const q = fresh();
+    expect(canAddWall(q, null)).toBe(true);
+    expect(canAddWall(q, { chars: 1000, budget: WALL_BUDGET })).toBe(true);
+    expect(canAddWall(q, { chars: 1000, budget: WALL_BUDGET / 4 })).toBe(false); // had to squeeze
+    expect(canAddWall(q, { chars: 0, budget: 0 })).toBe(false); // couldn't save at all
+    expect(canAddWall(q, { chars: SAVE_SOFT_MAX + 1, budget: WALL_BUDGET })).toBe(false);
+    expect(addOwnWall(q, { chars: 0, budget: 0 })).toBe(null);
+  });
+
+  it('fits the ceiling in storage even when every wall is painted heavily', () => {
+    // every mural, free wall and own wall at the smallest budget stays well under ~2.5M chars
+    const walls = ALL.length + OWN_MAX;
+    expect(walls * SAVE_BUDGETS[SAVE_BUDGETS.length - 1]).toBeLessThan(1_000_000);
+    expect(SAVE_SOFT_MAX).toBeLessThan(2_500_000);
+    // a real heavy save of many walls squeezes down instead of failing
+    const p = fresh();
+    for (let k = 0; k < 40; k++) {
+      const id = addOwnWall(p);
+      for (let j = 0; j < 30; j++) scribble(p.walls[id], 120, { seed: k * 50 + j + 1, y0: j * 20 });
+    }
+    const limit = 400_000;
+    const store = { data: null, getItem: () => null, setItem(k, v) { if (v.length > limit) throw new Error('QuotaExceededError'); this.data = v; } };
+    const r = trySave(store, p);
+    expect(r.chars).toBeGreaterThan(0);
+    expect(r.chars).toBeLessThanOrEqual(limit);
+    expect(r.budget).toBeLessThan(WALL_BUDGET);
+    expect(canAddWall(p, r)).toBe(false);
+    expect(parseProgress(store.data, ALL).own.ids.length).toBe(40);
+  });
+
+  it('never throws or overwrites the old save when storage refuses', () => {
+    const p = fresh();
+    addOwnWall(p);
+    scribble(p.walls['own-0'], 30);
+    const store = memStore();
+    store.data[SAVE_KEY] = 'old save';
+    const refusing = { getItem: store.getItem, setItem: () => { throw new Error('QuotaExceededError'); } };
+    expect(trySave(refusing, p)).toEqual({ chars: 0, budget: 0 });
+    expect(store.data[SAVE_KEY]).toBe('old save');
+  });
+});
+
+describe('the street with his own walls', () => {
+  const N = MURAL_DEFS.length;
+  const MP = pageCount(N);
+  const SIZES = [[820, 1180], [1180, 820], [390, 844]];
+
+  it('keeps the mural pages as they were, then at least one page of his walls', () => {
+    expect(MP).toBe(N / PER_PAGE);
+    expect(OWN_PER_PAGE).toBe(16);
+    expect(streetPages(N, 0)).toBe(MP + 1);
+    for (let p = 0; p < MP; p++) {
+      expect(isOwnPage(p, N)).toBe(false);
+      for (let k = 0; k < OWN_PER_PAGE; k++) expect(streetSlot(p, k, N, 7)).toEqual({ kind: 'wall', index: slotWall(p, k, N) });
+    }
+    expect(isOwnPage(MP, N)).toBe(true);
+    // with none made, the page shows just the '+'
+    expect(streetSlot(MP, 0, N, 0)).toEqual({ kind: 'add' });
+    for (let k = 1; k < OWN_PER_PAGE; k++) expect(streetSlot(MP, k, N, 0)).toBe(null);
+  });
+
+  it('moves the + to a fresh page when a page fills', () => {
+    for (const [n, pages, plusPage, plusSlot] of [[0, 1, 0, 0], [1, 1, 0, 1], [15, 1, 0, 15], [16, 2, 1, 0], [17, 2, 1, 1], [31, 2, 1, 15], [32, 3, 2, 0]]) {
+      expect(ownPageCount(n), `n=${n}`).toBe(pages);
+      expect(streetPages(N, n)).toBe(MP + pages);
+      expect(addSpot(n, N)).toEqual({ page: MP + plusPage, slot: plusSlot });
+      expect(streetSlot(MP + plusPage, plusSlot, N, n)).toEqual({ kind: 'add' });
+    }
+    // every wall in order, each exactly once, across the pages
+    const n = 37;
+    const seen = [];
+    for (let p = MP; p < streetPages(N, n); p++) {
+      for (let k = 0; k < OWN_PER_PAGE; k++) {
+        const it = streetSlot(p, k, N, n);
+        if (it && it.kind === 'own') {
+          seen.push(it.i);
+          expect(ownPageOf(it.i, N)).toBe(p);
+        }
+      }
+    }
+    expect(seen).toEqual([...Array(n).keys()]);
+    expect(streetSlot(streetPages(N, n), 0, N, n)).toBe(null); // past the end
+    expect(ownPageCount(OWN_MAX)).toBe(Math.floor(OWN_MAX / 16) + 1);
+  });
+
+  it('shows a window of dots when there are too many pages', () => {
+    expect(dotWindow(0, 5, 9)).toEqual({ first: 0, count: 5 });
+    expect(dotWindow(0, 20, 5)).toEqual({ first: 0, count: 5 });
+    expect(dotWindow(10, 20, 5)).toEqual({ first: 8, count: 5 });
+    expect(dotWindow(19, 20, 5)).toEqual({ first: 15, count: 5 });
+    for (let page = 0; page < 20; page++) {
+      const w = dotWindow(page, 20, 5);
+      expect(page).toBeGreaterThanOrEqual(w.first);
+      expect(page).toBeLessThan(w.first + w.count);
+    }
+  });
+
+  it('keeps the street on screen and clear of the bottom edge with many pages', () => {
+    for (const [w, h] of SIZES) {
+      for (const pages of [MP + 1, MP + 3, streetPages(N, OWN_MAX)]) {
+        const L = streetLayout(w, h, pages);
+        expect(L.dots.max).toBeGreaterThanOrEqual(3);
+        expect(L.dots.max).toBeLessThanOrEqual(MAX_DOTS);
+        // each dot gets at least a fingertip's width
+        expect(L.dots.w / Math.min(pages, L.dots.max), `${w}x${h} ${pages}`).toBeGreaterThanOrEqual(36);
+        for (const b of [L.home, L.prev, L.next, L.dots, ...L.slots]) {
+          expect(b.x, `${w}x${h} ${pages} ${b.id}`).toBeGreaterThanOrEqual(0);
+          expect(b.y).toBeGreaterThanOrEqual(0);
+          expect(b.x + b.w, `${w}x${h} ${pages} ${b.id}`).toBeLessThanOrEqual(w);
+          expect(b.y + b.h).toBeLessThanOrEqual(h - 40);
+        }
+        for (const b of [L.prev, L.next]) expect(b.w, `${w}x${h} ${pages}`).toBeGreaterThanOrEqual(52);
+        expect(L.prev.x + L.prev.w).toBeLessThan(L.dots.x);
+        expect(L.next.x).toBeGreaterThan(L.dots.x + L.dots.w);
+        expect(L.slots.length).toBe(OWN_PER_PAGE);
+      }
     }
   });
 });

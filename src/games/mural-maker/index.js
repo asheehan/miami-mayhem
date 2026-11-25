@@ -5,19 +5,20 @@ import { WALL_DEFS } from './murals/index.js';
 import { STAMPS } from './stamps.js';
 import {
   WALL_W, WALL_H, SWATCHES, STAMP_SIZE, BRUSHES, compileMural, regionAt, regionPoint, createWall, fillRegion,
-  startStroke, extendStroke, endStroke, addStamp, resizeStamp, undo, clearWall, isComplete, isBlank, dripsFor, checkSpray, blankRegions,
-  loadProgress, saveProgress, paintFor,
+  startStroke, extendStroke, endStroke, addStamp, resizeStamp, undo, clearWall, isBlank, dripsFor, finishWall,
+  loadProgress, trySave, paintFor, isOwnId, ownMural, addOwnWall, removeOwnWall, canAddWall, OWN_MAX,
 } from './mural.js';
 import {
   C, font, roundRect, outlined, makeCanvas, renderFills, renderLines, renderPaint, drawStroke, drawDrip, drawStamp,
-  drawTwinkles, drawHint, drawWink, drawFx, drawConfetti, renderWallImage, drawStar, drawTool, glyph, drawSwatch,
-  drawStampIcon, paintColour, tracePath, applyXf, drawArrow, drawDots,
+  drawTwinkles, drawWink, drawFx, drawConfetti, renderWallImage, drawStar, drawTool, glyph, drawSwatch,
+  drawStampIcon, paintColour, tracePath, applyXf, drawArrow, drawDots, drawAddTile, drawBigCross,
 } from './draw.js';
 
 const WALLS = WALL_DEFS.map(compileMural);
 const byId = new Map(WALLS.map((m) => [m.id, m]));
 const MURAL_N = WALLS.filter((wm) => !wm.free).length; // murals come first, then the free walls
 const LAST_KEY = 'mural-maker-last'; // the id of the wall opened last, so the street opens on its page
+const LAST_ADD = '+'; // ...or this, for the page with the '+' tile
 
 const WIPE_TIME = 0.42; // s for a fill to spray in
 const ALIVE_TIME = 4.4; // s the mural comes alive for
@@ -77,9 +78,47 @@ export function swipeTurn(dx, dy, width) {
 // A press that barely moved is a tap.
 export const isTapMove = (dx, dy) => Math.hypot(dx, dy) < 20;
 
+// After the mural pages come the pages of Riley's own walls: a full grid of them, in the
+// order made, then the '+' tile that adds another. There is always at least one such page.
+export const OWN_PER_PAGE = PER_PAGE + STREET_COLS;
+export const ownPageCount = (own) => Math.floor(Math.max(0, own) / OWN_PER_PAGE) + 1;
+export const streetPages = (murals, own) => pageCount(murals) + ownPageCount(own);
+export const isOwnPage = (page, murals) => page >= pageCount(murals);
+// The page his i-th own wall is on (i = own count gives the '+' tile's page).
+export const ownPageOf = (i, murals) => pageCount(murals) + Math.floor(i / OWN_PER_PAGE);
+
+// What sits in a slot of a page: { kind: 'wall', index } (a mural or one of the four free
+// walls, by index into the walls list), { kind: 'own', i } (his i-th own wall),
+// { kind: 'add' } (the '+' tile), or null for an empty slot.
+export function streetSlot(page, slot, murals, own) {
+  if (page < 0 || slot < 0 || slot >= OWN_PER_PAGE) return null;
+  if (!isOwnPage(page, murals)) {
+    const index = slotWall(page, slot, murals);
+    return index >= 0 ? { kind: 'wall', index } : null;
+  }
+  const i = (page - pageCount(murals)) * OWN_PER_PAGE + slot;
+  if (i < own) return { kind: 'own', i };
+  if (i === own) return { kind: 'add' };
+  return null;
+}
+
+// Where the '+' tile is: { page, slot }.
+export const addSpot = (own, murals) => ({ page: ownPageOf(own, murals), slot: own % OWN_PER_PAGE });
+
+// Which pages get a dot when only `max` fit: a run of them around the current page.
+export function dotWindow(page, pages, max) {
+  const count = Math.max(1, Math.min(pages, max));
+  const first = clamp(page - Math.floor(count / 2), 0, pages - count);
+  return { first, count };
+}
+
+// The most dots shown at once; beyond this the dots become a window that moves along.
+export const MAX_DOTS = 9;
+
 // The street's layout for a screen. Every page uses the same slots, so tiles never move
 // when the page turns. The arrows and dots sit in a row along the bottom, well clear of the
-// strip at the very bottom of an iPad screen that iOS keeps for its home gesture.
+// strip at the very bottom of an iPad screen that iOS keeps for its home gesture. With more
+// pages than dots fit, `dots.max` dots are shown (see dotWindow).
 export function streetLayout(w, h, pages) {
   const pad = clamp(w * 0.025, 10, 20);
   const icon = clamp(Math.min(w, h) * 0.12, 48, 68);
@@ -88,10 +127,14 @@ export function streetLayout(w, h, pages) {
   const navH = clamp(h * 0.065, 56, 76);
   const navY = h - foot - navH;
   const dotStep = navH * 0.7;
-  const dotsW = Math.max(navH, pages * dotStep);
-  const dots = { id: 'dots', x: (w - dotsW) / 2, y: navY, w: dotsW, h: navH, pages };
-  const aw = Math.min(navH * 1.8, (w - dotsW) / 2 - pad - 12);
   const gap = clamp(w * 0.04, 12, 48);
+  // the arrows stay at least as wide as they are tall
+  const fit = Math.max(3, Math.floor((w - 2 * (pad + gap + navH)) / dotStep));
+  const max = Math.min(MAX_DOTS, fit);
+  const shown = Math.min(pages, max);
+  const dotsW = Math.max(navH, shown * dotStep);
+  const dots = { id: 'dots', x: (w - dotsW) / 2, y: navY, w: dotsW, h: navH, pages, max };
+  const aw = Math.min(navH * 1.8, (w - dotsW) / 2 - gap - pad);
   const prev = { id: 'prev', x: dots.x - gap - aw, y: navY, w: aw, h: navH };
   const next = { id: 'next', x: dots.x + dotsW + gap, y: navY, w: aw, h: navH };
   // the grid: three rows of murals and the row of free walls
@@ -123,9 +166,20 @@ function create(host) {
   const debug = params.has('debug');
   const store = storage() || memoryStore;
   const progress = loadProgress(store, WALLS);
-  const versions = Object.fromEntries(WALLS.map((m) => [m.id, 0]));
+  const versions = {}; // id -> how many times the wall has changed (thumbnails redraw when it does)
+  const verOf = (id) => versions[id] || 0;
   const thumbs = new Map(); // id -> { ver, w, canvas }
+  const blankThumbs = new Map(); // width -> a blank free wall, shared by all his blank walls
   const lineCache = new Map();
+  const ownMurals = new Map(); // id -> compiled own wall
+  const own = () => progress.own.ids;
+  // the compiled wall for an id: a mural, a free wall or one of his own (undefined if none)
+  function muralFor(id) {
+    if (byId.has(id)) return byId.get(id);
+    if (!isOwnId(id) || !progress.walls[id]) return undefined;
+    if (!ownMurals.has(id)) ownMurals.set(id, ownMural(id));
+    return ownMurals.get(id);
+  }
 
   let size = { w: 1, h: 1 };
   let screen = 'street'; // 'street' | 'paint'
@@ -139,9 +193,11 @@ function create(host) {
   let brush = 1;
   let drip = false;
   let stampKind = 'star';
-  let confirm = false;
+  let confirm = false; // false | 'clear' | 'remove' (take one of his own walls away)
   let saveIn = -1;
   let lastSave = 0;
+  let saved = null; // what the last save managed: { chars, budget }
+  let addNudge = -9; // time the full '+' was last tapped (it gives a little shake)
 
   // the wall on screen and its layers
   let view = { x: 0, y: 0, w: 1, h: 1, s: 1 };
@@ -153,8 +209,11 @@ function create(host) {
   let alive = null; // { t, confetti }
   let sticker = null; // { t } the star flying onto a finished wall
 
-  // the street's pages
-  const pages = pageCount(MURAL_N);
+  // the street's pages: the murals, then his own walls
+  let pages = streetPages(MURAL_N, own().length);
+  const refreshPages = () => {
+    pages = streetPages(MURAL_N, own().length);
+  };
   let page = 0;
   let press = null; // a finger down on the street: { x, y, dx, dy }
   let slide = 0; // px the murals are shifted by while a page slides into place
@@ -167,23 +226,69 @@ function create(host) {
     }
     const at = pageOf(WALLS.findIndex((wm) => wm.id === last), MURAL_N);
     if (at >= 0) page = at;
+    else if (last === LAST_ADD) page = ownPageOf(own().length, MURAL_N);
+    else if (own().includes(last)) page = ownPageOf(own().indexOf(last), MURAL_N);
   }
+  const remember = (v) => {
+    try {
+      store.setItem(LAST_KEY, v);
+    } catch {
+      // remembering the page is only a nicety
+    }
+  };
 
   const paint = () => paintFor(swatch, base);
   const touched = () => {
-    versions[wall.id]++;
+    versions[wall.id] = verOf(wall.id) + 1;
     saveIn = SAVE_DELAY;
   };
 
   function save() {
     saveIn = -1;
-    lastSave = saveProgress(store, progress);
+    saved = trySave(store, progress);
+    lastSave = saved.chars;
+  }
+
+  const canAdd = () => canAddWall(progress, saved);
+
+  // A new blank wall of his own, opened straight away for painting (unless open is false).
+  // Returns its id, or null when there's no room for another.
+  function addWall(open = true) {
+    const id = addOwnWall(progress, saved);
+    if (!id) {
+      addNudge = time;
+      return null;
+    }
+    refreshPages();
+    save();
+    if (open) openWall(muralFor(id));
+    else if (screen === 'street') layout();
+    return id;
+  }
+
+  // Takes one of his walls away for good. The street then shows the page where it was.
+  function removeWall(id) {
+    const i = removeOwnWall(progress, id);
+    if (i < 0) return false;
+    const th = thumbs.get(id);
+    if (th) th.canvas.width = 0;
+    thumbs.delete(id);
+    ownMurals.delete(id);
+    delete versions[id];
+    refreshPages();
+    page = ownPageOf(Math.min(i, own().length), MURAL_N);
+    remember(own()[i] || LAST_ADD);
+    save();
+    slide = 0;
+    if (screen === 'street') layout();
+    return true;
   }
 
   // ---------- layout ----------
 
   function toolIds() {
-    return m && m.free ? ['street', 'fill', 'spray', 'size', 'drip', 'undo', 'clear'] : ['street', 'fill', 'spray', 'size', 'undo', 'clear'];
+    // a colouring page gets the Done button where a free wall has its drips
+    return m && m.free ? ['street', 'fill', 'spray', 'size', 'drip', 'undo', 'clear'] : ['street', 'fill', 'spray', 'size', 'done', 'undo', 'clear'];
   }
 
   // Tries tools down the side and along the top, and a few palette shapes, and keeps
@@ -259,17 +364,20 @@ function create(host) {
   }
 
   // The street: rows of warehouses, each with one wall. One page of murals at a time, with
-  // the free walls along the bottom.
+  // the free walls along the bottom; then pages of his own walls and the '+' tile.
   let street = null; // streetLayout() for the current size
   function layoutStreet() {
     street = streetLayout(size.w, size.h, pages);
     buttons = [street.home];
     for (const s of street.slots) {
-      const index = slotWall(page, s.slot, MURAL_N);
-      if (index >= 0) buttons.push({ id: 'wall', index, ...s });
+      const it = streetSlot(page, s.slot, MURAL_N, own().length);
+      if (!it) continue;
+      if (it.kind === 'wall') buttons.push({ id: 'wall', index: it.index, ...s });
+      else if (it.kind === 'own') buttons.push({ id: 'own', i: it.i, wallId: own()[it.i], ...s });
+      else buttons.push({ id: 'add', ...s });
     }
     if (pages > 1) {
-      buttons.push({ ...street.dots, page });
+      buttons.push({ ...street.dots, page, win: dotWindow(page, pages, street.dots.max) });
       if (page > 0) buttons.push(street.prev);
       if (page < pages - 1) buttons.push(street.next);
     }
@@ -300,10 +408,12 @@ function create(host) {
     if (b.id === 'home') {
       save();
       host.exit();
-    } else if (b.id === 'wall') openWall(b.index);
+    } else if (b.id === 'wall') openWall(WALLS[b.index]);
+    else if (b.id === 'own') openWall(muralFor(b.wallId));
+    else if (b.id === 'add') addWall();
     else if (b.id === 'prev') turnPage(page - 1);
     else if (b.id === 'next') turnPage(page + 1);
-    else if (b.id === 'dots') turnPage(clamp(Math.floor(((x - b.x) / b.w) * pages), 0, pages - 1));
+    else if (b.id === 'dots') turnPage(b.win.first + clamp(Math.floor(((x - b.x) / b.w) * b.win.count), 0, b.win.count - 1));
   }
 
   function layout() {
@@ -344,18 +454,16 @@ function create(host) {
 
   // ---------- flow ----------
 
-  function openWall(index) {
-    m = WALLS[index];
+  function openWall(wm) {
+    if (!wm) return;
+    m = wm;
     wall = progress.walls[m.id] || (progress.walls[m.id] = createWall(m));
-    // back on the street, this mural's page is the one showing
-    const at = pageOf(index, MURAL_N);
+    // back on the street, this wall's page is the one showing
+    const oi = own().indexOf(m.id);
+    const at = oi >= 0 ? ownPageOf(oi, MURAL_N) : pageOf(WALLS.indexOf(m), MURAL_N);
     if (at >= 0) {
       page = at;
-      try {
-        store.setItem(LAST_KEY, m.id);
-      } catch {
-        // remembering the page is only a nicety
-      }
+      remember(m.id);
     }
     slide = 0;
     press = null;
@@ -371,12 +479,7 @@ function create(host) {
     layout();
     buildLayers();
     // a finished mural says hello when it's opened again
-    // a picture that was coloured in before spray counted gets its star now
-    if (checkSpray(m, wall)) {
-      startAlive(true);
-      sticker = { t: 0 };
-      touched();
-    } else if (wall.done && isComplete(wall) && m.alive) startAlive(false);
+    if (wall.done && !isBlank(wall) && m.alive) startAlive(false);
   }
 
   function toStreet() {
@@ -466,10 +569,20 @@ function create(host) {
     const rMax = Math.max(...[[b.x, b.y], [b.x + b.w, b.y], [b.x, b.y + b.h], [b.x + b.w, b.y + b.h]].map(([cx, cy]) => Math.hypot(cx - p.x, cy - p.y)));
     wipe = { i, prev, paint: wall.fills[i], x: p.x, y: p.y, t: 0, rMax };
     touched();
-    if (r.completed) {
-      startAlive(true);
+  }
+
+  // The Done button: the mural comes alive, with confetti, and the first time the gold
+  // star flies on. A blank wall has nothing to finish.
+  function doDone() {
+    if (m.free || isBlank(wall)) return false;
+    settle();
+    const first = finishWall(wall);
+    startAlive(true);
+    if (first) {
       sticker = { t: 0 };
+      touched();
     }
+    return true;
   }
 
   function doUndo() {
@@ -478,7 +591,6 @@ function create(host) {
     if (!what) return;
     if (what === 'fills' || what === 'all') redrawFills();
     if (what === 'marks' || what === 'all') redrawPaint();
-    checkSpray(m, wall);
     touched();
   }
 
@@ -487,7 +599,6 @@ function create(host) {
     if (clearWall(wall)) {
       redrawFills();
       redrawPaint();
-      checkSpray(m, wall);
       touched();
     }
   }
@@ -577,16 +688,6 @@ function create(host) {
     ctx.translate(view.x, view.y);
     ctx.scale(view.s, view.s);
     drawTwinkles(ctx, m, wall.fills, time);
-    // nearly done: a sparkle shows each spot still waiting for colour
-    if (!m.free && !alive) {
-      const left = blankRegions(wall);
-      if (left.length && left.length <= Math.max(3, m.regions.length / 3)) {
-        for (const i of left) {
-          const p = regionPoint(m, i);
-          if (Number.isFinite(p.x)) drawHint(ctx, p.x, p.y, time + i * 0.7);
-        }
-      }
-    }
     if (alive && m.alive) {
       const xform = xformAt(t);
       const wk = m.alive.wink;
@@ -657,6 +758,16 @@ function create(host) {
         drawStampIcon(ctx, b.kind, b.x + b.w / 2, b.y + b.h / 2 + (on ? Math.sin(time * 5) * 2 : 0), b.w * (on ? 0.82 : 0.7), paint());
       } else if (b.id === 'yes' || b.id === 'no') {
         // drawn by drawConfirm
+      } else if (b.id === 'done') {
+        // a big green tick; grey while there's nothing on the wall to finish
+        const ready = !isBlank(wall);
+        const bob = ready && !wall.done ? Math.sin(time * 3) * 2 : 0;
+        drawTool(ctx, { ...b, y: b.y + bob, fill: ready ? '#2fbf5b' : '#b9b3c6' }, false);
+        ctx.save();
+        if (!ready) ctx.globalAlpha = 0.55;
+        glyph(ctx, 'tick', b.x + b.w / 2, b.y + bob + b.h / 2, b.w * 0.78);
+        ctx.restore();
+        if (wall.done) drawStar(ctx, b.x + b.w - 3, b.y + bob + 3, Math.max(9, b.w * 0.2));
       } else {
         const on = b.id === tool || (b.id === 'drip' && drip);
         drawTool(ctx, b, on);
@@ -690,10 +801,15 @@ function create(host) {
     ctx.lineWidth = 4;
     ctx.strokeStyle = C.white;
     ctx.strokeRect(px, py, pw, ph);
-    ctx.save();
-    ctx.translate(px + pw, py + ph);
-    glyph(ctx, 'trash', 0, 0, pw * 0.55);
-    ctx.restore();
+    if (confirm === 'remove') {
+      // the whole wall crossed out: it goes away for good
+      drawBigCross(ctx, px, py, pw, ph);
+    } else {
+      ctx.save();
+      ctx.translate(px + pw, py + ph);
+      glyph(ctx, 'trash', 0, 0, pw * 0.55);
+      ctx.restore();
+    }
     for (const b of [no, yes]) {
       const bob = b.id === 'no' ? 0 : Math.sin(time * 4) * 3;
       drawTool(ctx, { ...b, y: b.y + bob }, false);
@@ -703,7 +819,7 @@ function create(host) {
 
   function thumbFor(wm, wl, cssW) {
     const pw = Math.max(16, Math.round(cssW * dprNow()));
-    const ver = versions[wm.id];
+    const ver = verOf(wm.id);
     const hitc = thumbs.get(wm.id);
     if (hitc && hitc.ver === ver && hitc.w === pw) return hitc.canvas;
     const canvas = renderWallImage(wm, wl, pw, lineCache);
@@ -735,36 +851,98 @@ function create(host) {
       ctx.fillStyle = '#d9cfe8';
       ctx.fillRect(0, s.ground - 2, w, s.rowH * 0.035);
     }
-    // the murals: this page, and while it slides in, the page beside it
+    // the walls: this page, and while it slides in, the page beside it. The four free walls
+    // stay put while mural pages turn; everything slides on the pages of his own walls.
     const span = w;
     const shown = [[page, slide]];
     if (slide > 0.5 && page > 0) shown.push([page - 1, slide - span]);
     if (slide < -0.5 && page < pages - 1) shown.push([page + 1, slide + span]);
+    const freeStill = shown.every(([p]) => !isOwnPage(p, MURAL_N));
+    const n = own().length;
     for (const [p, dx] of shown) {
       if (dx <= -span || dx >= span) continue;
       for (const s of street.slots) {
-        if (s.slot >= PER_PAGE) continue;
-        const index = slotWall(p, s.slot, MURAL_N);
-        if (index >= 0) drawWallTile(ctx, s, index, dx);
+        if (freeStill && s.slot >= PER_PAGE) continue;
+        const it = streetSlot(p, s.slot, MURAL_N, n);
+        if (!it) continue;
+        if (it.kind === 'wall') drawWallTile(ctx, s, WALLS[it.index], it.index, dx);
+        else if (it.kind === 'own') drawWallTile(ctx, s, muralFor(own()[it.i]), WALLS.length + Number(own()[it.i].slice(4)), dx); // its look follows it about
+        else {
+          const full = !canAdd();
+          const shake = time - addNudge < 0.4 ? Math.sin((time - addNudge) * 50) * 6 : 0;
+          drawAddTile(ctx, { ...s, x: s.x + dx + shake }, full, time);
+        }
       }
     }
-    for (const s of street.slots) if (s.slot >= PER_PAGE) drawWallTile(ctx, s, slotWall(page, s.slot, MURAL_N), 0);
+    if (freeStill) {
+      for (const s of street.slots) {
+        if (s.slot < PER_PAGE) continue;
+        const index = slotWall(page, s.slot, MURAL_N);
+        drawWallTile(ctx, s, WALLS[index], index, 0);
+      }
+    }
     // page turning
     for (const b of buttons) {
-      if (b.id === 'dots') drawDots(ctx, b, page, pages, time);
+      if (b.id === 'dots') drawDots(ctx, b, page, pages, time, b.win, pageCount(MURAL_N));
       else if (b.id === 'prev' || b.id === 'next') drawArrow(ctx, b, b.id === 'next' ? 1 : -1, time);
     }
   }
 
-  function drawWallTile(ctx, s, index, dx) {
-    const wm = WALLS[index];
+  // A blank free wall at a thumbnail size, shared by all of his blank walls.
+  function blankThumb(cssW) {
+    const pw = Math.max(16, Math.round(cssW * dprNow()));
+    if (!blankThumbs.has(pw)) {
+      const tm = ownMural('own-blank');
+      blankThumbs.set(pw, renderWallImage(tm, createWall(tm), pw, lineCache));
+    }
+    return blankThumbs.get(pw);
+  }
+
+  // His own walls' thumbnails are painted a frame at a time (see update), so a page full
+  // of them never stalls; until then a tile shows what it showed last, or a blank wall.
+  function ownThumb(wm, wl, cssW) {
+    if (isBlank(wl)) return blankThumb(cssW);
+    const c = thumbs.get(wm.id);
+    return c ? c.canvas : blankThumb(cssW);
+  }
+
+  // Whether a wall's thumbnail needs painting (again) at the street's tile size.
+  function needsThumb(id, want) {
+    const wl = progress.walls[id];
+    if (!wl || (isOwnId(id) && isBlank(wl))) return false;
+    const c = thumbs.get(id);
+    return !c || c.w !== want || c.ver !== verOf(id);
+  }
+
+  // Lets go of his walls' thumbnails that are more than a page away, so hundreds of walls
+  // never mean hundreds of canvases.
+  let trimmedFor = -1;
+  function trimThumbs() {
+    if (trimmedFor === page) return;
+    trimmedFor = page;
+    const keep = new Set();
+    for (const p of [page - 1, page, page + 1]) {
+      for (let k = 0; k < OWN_PER_PAGE; k++) {
+        const it = streetSlot(p, k, MURAL_N, own().length);
+        if (it && it.kind === 'own') keep.add(own()[it.i]);
+      }
+    }
+    for (const [id, c] of thumbs) {
+      if (isOwnId(id) && !keep.has(id)) {
+        c.canvas.width = 0;
+        thumbs.delete(id);
+      }
+    }
+  }
+
+  function drawWallTile(ctx, s, wm, seed, dx) {
     const wl = progress.walls[wm.id];
     const b = { ...s, x: s.x + dx };
     // the warehouse
     const bx = b.x - b.w * 0.09;
     const bw = b.w * 1.18;
-    const top = b.y - b.rowH * 0.1 - ((index * 7) % 3) * b.rowH * 0.03;
-    ctx.fillStyle = BUILDINGS[index % BUILDINGS.length];
+    const top = b.y - b.rowH * 0.1 - ((seed * 7) % 3) * b.rowH * 0.03;
+    ctx.fillStyle = BUILDINGS[seed % BUILDINGS.length];
     ctx.fillRect(bx, top, bw, b.ground - top);
     ctx.fillStyle = 'rgba(0,0,0,0.18)';
     ctx.fillRect(bx, top, bw, Math.max(4, b.rowH * 0.025));
@@ -772,7 +950,7 @@ function create(host) {
     ctx.strokeStyle = C.ink;
     ctx.strokeRect(bx, top, bw, b.ground - top);
     // the mural
-    const th = thumbFor(wm, wl, b.w);
+    const th = isOwnId(wm.id) ? ownThumb(wm, wl, b.w) : thumbFor(wm, wl, b.w);
     ctx.drawImage(th, b.x, b.y, b.w, b.h);
     if (wm.free && isBlank(wl)) {
       ctx.globalAlpha = 0.5;
@@ -785,7 +963,7 @@ function create(host) {
     if (wl.done) {
       ctx.save();
       ctx.translate(b.x + b.w - 4, b.y + 4);
-      ctx.rotate(0.25 + Math.sin(time * 2 + index) * 0.08);
+      ctx.rotate(0.25 + Math.sin(time * 2 + seed) * 0.08);
       drawStar(ctx, 0, 0, Math.max(12, b.w * 0.2));
       ctx.restore();
     }
@@ -796,6 +974,18 @@ function create(host) {
   if (debug) {
     window.__mural = {
       walls: () => WALLS.map((wm, i) => ({ i, id: wm.id, regions: wm.regions.length, free: wm.free })),
+      // his own walls, in order
+      own: () => own().slice(),
+      // adds one of his walls (opened for painting only when open is true); its id, or null when full
+      addWall: (open = false) => addWall(open),
+      removeWall: (id) => removeWall(id),
+      canAdd: () => canAdd(),
+      ownMax: OWN_MAX,
+      saved: () => saved && { ...saved },
+      thumbCount: () => thumbs.size,
+      // presses the Done button
+      done: () => doDone(),
+      confirm: () => confirm,
       screen: () => screen,
       page: () => page,
       pages: () => pages,
@@ -804,8 +994,11 @@ function create(host) {
       turn: (n = 1) => turnPage(page + n),
       goto: (to) => turnPage(to),
       // the street's tiles on the current page: { index, id, x, y, w, h } (finger targets)
-      tiles: () => buttons.filter((b) => b.id === 'wall').map((b) => ({ index: b.index, id: WALLS[b.index].id, x: b.x, y: b.y, w: b.w, h: b.h })),
-      open: (id) => openWall(typeof id === 'string' ? WALLS.findIndex((wm) => wm.id === id) : id),
+      // kind is 'wall' (a mural or free wall), 'own' (his own) or 'add' (the '+' tile)
+      tiles: () => buttons.filter((b) => b.id === 'wall' || b.id === 'own' || b.id === 'add').map((b) => ({
+        kind: b.id, index: b.index, id: b.id === 'wall' ? WALLS[b.index].id : b.wallId, x: b.x, y: b.y, w: b.w, h: b.h,
+      })),
+      open: (id) => openWall(typeof id === 'string' ? muralFor(id) : WALLS[id]),
       street: () => toStreet(),
       wall: () => wall && JSON.parse(JSON.stringify({ ...wall, history: wall.history.length })),
       progress: () => JSON.parse(store.getItem('mural-maker-progress') || 'null'),
@@ -821,16 +1014,10 @@ function create(host) {
         return { x: view.x + p.x * view.s, y: view.y + p.y * view.s };
       },
       toScreen: (x, y) => ({ x: view.x + x * view.s, y: view.y + y * view.s }),
-      // fills every empty region (as if tapped) with a run of colours
+      // fills every empty region (as if tapped) with a run of colours (it doesn't finish it)
       fillAll(paints = ['0', '1', '2', '3', '4', '5', '6', '7', '8', 'r', 'g', 's4', 'd7']) {
         m.regions.forEach((r, i) => {
-          if (!wall.fills[i]) {
-            const res = fillRegion(wall, i, paints[i % paints.length]);
-            if (res.completed) {
-              startAlive(true);
-              sticker = { t: 0 };
-            }
-          }
+          if (!wall.fills[i]) fillRegion(wall, i, paints[i % paints.length]);
         });
         redrawFills();
         touched();
@@ -865,22 +1052,30 @@ function create(host) {
           slide *= Math.exp(-dt * 14);
           if (Math.abs(slide) < 0.5) slide = 0;
         }
-        // paint the thumbnails of the pages either side ahead of time, one a frame
-        if (!slide && street) {
+        // paint thumbnails one a frame: his own walls on this page first, then the pages
+        // either side ahead of time
+        if (street) {
           const pw = street.slots[0].w;
           const want = Math.max(16, Math.round(pw * dprNow()));
-          for (const p of [page - 1, page + 1]) {
+          const n = own().length;
+          const order = slide ? [page] : [page, page - 1, page + 1];
+          for (const p of order) {
             if (p < 0 || p >= pages) continue;
-            const i = [...Array(PER_PAGE).keys()].map((k) => slotWall(p, k, MURAL_N)).find((j) => {
-              if (j < 0) return false;
-              const c = thumbs.get(WALLS[j].id);
-              return !c || c.w !== want || c.ver !== versions[WALLS[j].id];
-            });
-            if (i !== undefined) {
-              thumbFor(WALLS[i], progress.walls[WALLS[i].id], pw);
+            let id;
+            for (let k = 0; k < OWN_PER_PAGE && !id; k++) {
+              const it = streetSlot(p, k, MURAL_N, n);
+              if (!it || it.kind === 'add') continue;
+              // murals on this page are drawn as they're needed, as before
+              if (it.kind === 'wall' && (p === page || k >= PER_PAGE)) continue;
+              const wid = it.kind === 'own' ? own()[it.i] : WALLS[it.index].id;
+              if (needsThumb(wid, want)) id = wid;
+            }
+            if (id) {
+              thumbFor(muralFor(id), progress.walls[id], pw);
               break;
             }
           }
+          if (!slide) trimThumbs();
         }
       }
       if (screen !== 'paint') return;
@@ -1001,10 +1196,6 @@ function create(host) {
       if (gesture.kind === 'spray') {
         endStroke(wall);
         for (const mk of gesture.marks) for (const d of dripsFor(mk)) drips.push({ mark: mk, d, cur: 0 });
-        if (checkSpray(m, wall)) {
-          startAlive(true);
-          sticker = { t: 0 };
-        }
       } else if (gesture.entry.held) {
         gesture.entry.held = false;
         gesture.entry.t = 0.3;
@@ -1020,6 +1211,13 @@ function create(host) {
       }
       const b = buttons.find((r) => hit(r, x, y));
       if (confirm) {
+        if (b && b.id === 'yes' && confirm === 'remove') {
+          const id = m.id;
+          confirm = false;
+          toStreet();
+          removeWall(id);
+          return;
+        }
         if (b && b.id === 'yes') doClear();
         if (b && (b.id === 'yes' || b.id === 'no')) {
           confirm = false;
@@ -1041,9 +1239,11 @@ function create(host) {
         tool = 'spray';
       } else if (b.id === 'drip') drip = !drip;
       else if (b.id === 'undo') doUndo();
+      else if (b.id === 'done') doDone();
       else if (b.id === 'clear') {
         settle();
-        confirm = true;
+        // on one of his own walls that's already blank, the bin offers to take the wall away
+        confirm = own().includes(m.id) && isBlank(wall) ? 'remove' : 'clear';
         layout();
       } else if (b.id === 'swatch') {
         swatch = b.sw;
@@ -1057,9 +1257,9 @@ function create(host) {
 
   const start = params.get('mural');
   layout();
-  if (start && byId.has(start)) {
+  if (start && muralFor(start)) {
     size = { w: window.innerWidth || 820, h: window.innerHeight || 1180 };
-    openWall(WALLS.findIndex((wm) => wm.id === start));
+    openWall(muralFor(start));
   }
   return api;
 }
