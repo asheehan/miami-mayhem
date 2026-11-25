@@ -1,4 +1,4 @@
-// Coconut Shuffle levels: five rounds each, ramping gently. The first levels are slow with
+// Coconut Shuffle levels: five rounds each, ramping steadily. The first levels are unhurried with
 // three shells; then more swaps, faster, more shells, double swaps, and one twist at a time.
 //
 // shells   how many shells (3-5)
@@ -14,22 +14,22 @@
 // two      two critters hide; the one to find is shown at the end
 // teach    the picker badge
 export const LEVELS = [
-  { name: 'Slow and easy', shells: 3, swaps: 3, time: 1.25, show: 2.0, reach: 1, teach: 'shells' },
-  { name: 'One more', shells: 3, swaps: 4, time: 1.15, show: 1.8, reach: 1, teach: 'shells' },
-  { name: 'Long way round', shells: 3, swaps: 5, time: 1.05, show: 1.6, teach: 'shells' },
-  { name: 'Busy beach', shells: 3, swaps: 6, time: 0.9, show: 1.4, teach: 'more' },
-  { name: 'Quick hands', shells: 3, swaps: 7, time: 0.75, show: 1.3, teach: 'fast' },
-  { name: 'Four shells', shells: 4, swaps: 6, time: 0.8, show: 1.3, teach: 'shells' },
-  { name: 'Four and quick', shells: 4, swaps: 8, time: 0.68, show: 1.2, teach: 'fast' },
-  { name: 'Five shells', shells: 5, swaps: 8, time: 0.68, show: 1.2, teach: 'shells' },
-  { name: 'Double trouble', shells: 5, swaps: 8, time: 0.66, show: 1.2, doubles: 3, teach: 'double' },
-  { name: 'Sneaky crab', shells: 4, swaps: 8, time: 0.62, show: 1.2, decoy: 2, teach: 'decoy' },
-  { name: 'Fake out', shells: 4, swaps: 9, time: 0.58, show: 1.1, fakes: 3, teach: 'fake' },
-  { name: 'Round and round', shells: 5, swaps: 9, time: 0.58, show: 1.1, ring: true, spins: 4, teach: 'ring' },
-  { name: 'Palm leaf', shells: 5, swaps: 10, time: 0.54, show: 1.1, leaf: true, doubles: 2, teach: 'leaf' },
-  { name: 'Find the pink one', shells: 5, swaps: 10, time: 0.52, show: 1.0, two: true, teach: 'two' },
+  { name: 'Slow and easy', shells: 3, swaps: 4, time: 0.95, show: 1.6, reach: 1, teach: 'shells' },
+  { name: 'One more', shells: 3, swaps: 5, time: 0.9, show: 1.5, reach: 1, teach: 'shells' },
+  { name: 'Long way round', shells: 3, swaps: 6, time: 0.85, show: 1.4, teach: 'shells' },
+  { name: 'Busy beach', shells: 3, swaps: 8, time: 0.7, show: 1.3, teach: 'more' },
+  { name: 'Quick hands', shells: 3, swaps: 10, time: 0.58, show: 1.2, teach: 'fast' },
+  { name: 'Four shells', shells: 4, swaps: 8, time: 0.62, show: 1.2, teach: 'shells' },
+  { name: 'Four and quick', shells: 4, swaps: 10, time: 0.52, show: 1.1, teach: 'fast' },
+  { name: 'Five shells', shells: 5, swaps: 10, time: 0.52, show: 1.1, teach: 'shells' },
+  { name: 'Double trouble', shells: 5, swaps: 10, time: 0.5, show: 1.1, doubles: 4, teach: 'double' },
+  { name: 'Sneaky crab', shells: 4, swaps: 10, time: 0.48, show: 1.1, decoy: 3, teach: 'decoy' },
+  { name: 'Fake out', shells: 4, swaps: 11, time: 0.46, show: 1.0, fakes: 3, teach: 'fake' },
+  { name: 'Round and round', shells: 5, swaps: 11, time: 0.46, show: 1.0, ring: true, spins: 5, teach: 'ring' },
+  { name: 'Palm leaf', shells: 5, swaps: 12, time: 0.44, show: 1.0, leaf: true, doubles: 3, teach: 'leaf' },
+  { name: 'Find the pink one', shells: 5, swaps: 12, time: 0.42, show: 1.0, two: true, teach: 'two' },
   {
-    name: 'Shuffle master', shells: 5, swaps: 14, time: 0.42, show: 1.0, doubles: 4, fakes: 2, decoy: 2, leaf: true, teach: 'master',
+    name: 'Shuffle master', shells: 5, swaps: 16, time: 0.4, show: 0.9, doubles: 5, fakes: 3, decoy: 2, leaf: true, teach: 'master',
   },
 ];
 
@@ -41,4 +41,4 @@ export function difficulty(L) {
 }
 
 // What a 6-year-old's first levels must stay within.
-export const EASY = { shells: 3, maxSwaps: 5, minTime: 1.0 };
+export const EASY = { shells: 3, maxSwaps: 6, minTime: 0.85 };

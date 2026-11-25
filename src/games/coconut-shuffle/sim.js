@@ -379,12 +379,12 @@ export function starsFor(right, total = ROUNDS) {
 // The endless streak: each right answer turns it up a notch.
 export function streakSpec(k) {
   return {
-    shells: k < 4 ? 3 : k < 9 ? 4 : 5,
-    swaps: Math.min(12, 3 + Math.floor(k * 0.7)),
-    time: Math.max(0.34, 1.0 * Math.pow(0.93, k)),
-    show: k < 2 ? 1.4 : 1.1,
-    doubles: k >= 10 ? 1 + Math.floor((k - 10) / 4) : 0,
-    fakes: k >= 14 ? 1 : 0,
+    shells: k < 3 ? 3 : k < 7 ? 4 : 5,
+    swaps: Math.min(16, 4 + Math.floor(k * 0.8)),
+    time: Math.max(0.32, 0.85 * Math.pow(0.92, k)),
+    show: k < 2 ? 1.3 : 1.0,
+    doubles: k >= 8 ? 1 + Math.floor((k - 8) / 3) : 0,
+    fakes: k >= 11 ? 1 + Math.floor((k - 11) / 5) : 0,
   };
 }
 
