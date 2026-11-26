@@ -20,6 +20,8 @@ import { coconutShuffle } from './coconut-shuffle/index.js';
 import { memoryBeach } from './memory-beach/index.js';
 import { foodTruck } from './food-truck/index.js';
 import { sockPuppet } from './sock-puppet/index.js';
+import { djBooth } from './dj-booth/index.js';
+import { monsterSquad } from './monster-squad/index.js';
 
 // Every game the launcher offers, in tile order. To add a game, give it its own folder
 // here exporting { id, title, drawTile(ctx, x, y, w, h, time), create(host) }, where
@@ -35,4 +37,5 @@ export const games = [pixelAnts, stampede, pelicanDash, flamingoGolf, laterGator
   dominoDash, iggyHides,
   coconutShuffle, memoryBeach, foodTruck,
   sockPuppet,
+  djBooth, monsterSquad,
 ];
